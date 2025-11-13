@@ -1,0 +1,21 @@
+.btn-primary {
+  @apply bg-darkblue-light text-white rounded px-4 py-2 hover:bg-darkblue-hover transition;
+}
+
+.btn-secondary {
+  @apply text-darkblue-lighter hover:text-white transition;
+}
+
+.sidebar-btn {
+  @apply w-full text-left p-2 rounded transition-colors duration-200 cursor-pointer text-darkblue-lighter hover:bg-darkblue-hover hover:text-white;
+}
+
+.sidebar-btn-active {
+  @apply bg-darkblue-hover text-white font-semibold;
+}
+
+.upload-area {
+  @apply w-full max-w-3xl h-96 border-4 border-dashed border-darkblue-border rounded-md flex items-center justify-center text-darkblue-lighter text-xl font-semibold cursor-pointer transition hover:border-darkblue-hover hover:text-darkblue-hover;
+}
+
+

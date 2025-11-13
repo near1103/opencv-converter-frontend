@@ -1,25 +1,33 @@
-import logo from './logo.svg';
-import './App.css';
+import './styles/App.css';
+import './styles/index.css';
+import React from 'react';
+import {BrowserRouter as Router, Navigate, Route, Routes} from 'react-router-dom';
+import HomePage from "./components/pages/HomePage";
+import LoginPage from "./components/pages/LoginPage";
+import RegisterPage from "./components/pages/RegisterPage";
+import {UserProvider, useUser} from "./UserContext";
+import SavedImagesPage from "./components/pages/SavedImagesPage";
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+function ProtectedRoute({ children }) {
+    const { user, loading } = useUser();
+
+    if (loading) return <div>Loading...</div>;
+    if (!user) return <Navigate to="/login" />;
+
+    return children;
 }
 
-export default App;
+export default function App() {
+    return (
+        <UserProvider>
+            <Router>
+                <Routes>
+                    <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/signup" element={<RegisterPage />} />
+                    <Route path="/saved" element={<SavedImagesPage />} />
+                </Routes>
+            </Router>
+        </UserProvider>
+    );
+}
