@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { registerRequest } from '../../api';
+import React, { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { registerRequest } from "../../api";
 import Navbar from "../Navbar";
 import Toast from "../ui-elements/Toast";
+import { useUser } from "../../UserContext";
 
 export default function RegisterPage() {
     const navigate = useNavigate();
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const { setUser } = useUser();
+
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [toast, setToast] = useState(null);
 
-    const showToast = (message, type = 'info') => {
+    const showToast = (message, type = "info") => {
         setToast({ message, type });
     };
 
@@ -23,19 +26,29 @@ export default function RegisterPage() {
         e.preventDefault();
 
         if (password !== confirmPassword) {
-            showToast('Passwords do not match', 'error');
+            showToast("Passwords do not match", "error");
             return;
         }
 
         try {
-            await registerRequest(email, password);
-            showToast('Registration successful! Navigating to login...', 'success');
+            const data = await registerRequest(email, password);
 
-            setTimeout(() => {
-                navigate('/login');
-            }, 1500);
+            if (data?.token) {
+                setUser?.({
+                    uid: data.uid,
+                    email: data.email,
+                    token: data.token,
+                });
+
+                showToast("Registration successful! Redirecting...", "success");
+                setTimeout(() => navigate("/"), 1200);
+                return;
+            }
+
+            showToast("Registration successful! Navigating to login...", "success");
+            setTimeout(() => navigate("/login"), 1500);
         } catch (err) {
-            showToast(err.message || 'Registration failed', 'error');
+            showToast(err?.message || "Registration failed", "error");
         }
     };
 
@@ -44,11 +57,7 @@ export default function RegisterPage() {
             <Navbar />
 
             {toast && (
-                <Toast
-                    message={toast.message}
-                    type={toast.type}
-                    onClose={closeToast}
-                />
+                <Toast message={toast.message} type={toast.type} onClose={closeToast} />
             )}
 
             <div className="flex-1 flex items-center justify-center">
@@ -56,7 +65,9 @@ export default function RegisterPage() {
                     onSubmit={handleRegister}
                     className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md space-y-5 border border-blue-100"
                 >
-                    <h2 className="text-2xl font-semibold text-center text-blue-600">Create Account</h2>
+                    <h2 className="text-2xl font-semibold text-center text-blue-600">
+                        Create Account
+                    </h2>
 
                     <input
                         type="email"
@@ -93,7 +104,7 @@ export default function RegisterPage() {
                     </button>
 
                     <p className="text-sm text-center text-gray-600">
-                        Already have an account?{' '}
+                        Already have an account?{" "}
                         <Link to="/login" className="text-blue-600 hover:underline">
                             Log in
                         </Link>

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { useUser } from '../../UserContext';
-import { fetchUserImages } from '../../api';
-import SavedImage from '../../components/ui-elements/SavedImage';
-import Navbar from '../../components/Navbar';
+import React, { useEffect, useState } from "react";
+import { useUser } from "../../UserContext";
+import { fetchUserImages } from "../../api";
+import SavedImage from "../../components/ui-elements/SavedImage";
+import Navbar from "../../components/Navbar";
 
 export default function SavedImagesPage() {
     const { user } = useUser();
@@ -11,17 +11,19 @@ export default function SavedImagesPage() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        if (!user?.uid) return;
+        if (!user) return;
 
         setLoading(true);
-        fetchUserImages(user.uid)
-            .then(setImages)
+        setError(null);
+
+        fetchUserImages()
+            .then(setImages) // <-- теперь это массив объектов
             .catch((err) => setError(err.message))
             .finally(() => setLoading(false));
     }, [user]);
 
-    const handleDelete = (deletedPath) => {
-        setImages((prevImages) => prevImages.filter((path) => path !== deletedPath));
+    const handleDelete = (deletedId) => {
+        setImages((prev) => prev.filter((img) => img.id !== deletedId));
     };
 
     return (
@@ -33,18 +35,31 @@ export default function SavedImagesPage() {
                 </h1>
 
                 {loading && (
-                    <p className="text-blue-700 font-semibold text-center mt-10">Loading...</p>
+                    <p className="text-blue-700 font-semibold text-center mt-10">
+                        Loading...
+                    </p>
                 )}
+
                 {error && (
-                    <p className="text-red-600 font-semibold text-center mt-10">Error: {error}</p>
+                    <p className="text-red-600 font-semibold text-center mt-10">
+                        Error: {error}
+                    </p>
                 )}
+
                 {!loading && images.length === 0 && (
-                    <p className="text-gray-600 text-center mt-10">You didn't save any images.</p>
+                    <p className="text-gray-600 text-center mt-10">
+                        You didn't save any images.
+                    </p>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {images.map((path, index) => (
-                        <SavedImage key={index} path={path} onDelete={handleDelete} />
+                    {images.map((img) => (
+                        <SavedImage
+                            key={img.id}
+                            id={img.id}
+                            formatId={img.formatId}
+                            onDelete={handleDelete}
+                        />
                     ))}
                 </div>
             </main>

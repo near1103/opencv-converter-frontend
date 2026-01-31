@@ -17,7 +17,10 @@ import GaussianBlurPanel from "../filter-panels/GaussianBlurPanel";
 import ContrastPanel from "../filter-panels/ContrastPanel";
 import GrayscalePanel from "../filter-panels/GrayscalePanel";
 import NegativePanel from "../filter-panels/NegativePanel";
-import {sendFilterRequest} from "../../api";
+import {sendFilterRequest, getAuthToken} from "../../api";
+import ChromaticAberrationPanel from "../filter-panels/ChromaticAberrationPanel";
+import DataMoshPanel from "../filter-panels/DataMoshPanel";
+import ASCIIGradientPanel from "../filter-panels/ASCIIGradientPanel";
 
 const FILTERS = [
     "RGB_SHIFT",
@@ -32,6 +35,9 @@ const FILTERS = [
     "CONTRAST",
     "GRAYSCALE",
     "NEGATIVE",
+    "CHROMATIC_ABERRATION",
+    "DATA_MOSH",
+    "ASCII_ART"
 ];
 
 const FilterPanels = {
@@ -46,7 +52,10 @@ const FilterPanels = {
     GAUSSIAN_BLUR: GaussianBlurPanel,
     CONTRAST: ContrastPanel,
     GRAYSCALE: GrayscalePanel,
-    NEGATIVE: NegativePanel
+    NEGATIVE: NegativePanel,
+    CHROMATIC_ABERRATION: ChromaticAberrationPanel,
+    DATA_MOSH: DataMoshPanel,
+    ASCII_ART: ASCIIGradientPanel
 };
 
 const defaultParamsByFilter = {
@@ -92,6 +101,23 @@ const defaultParamsByFilter = {
     },
     contrast:{
         alpha: 1.0
+    },
+    chromatic_aberration: {
+        redStrength: 5.0,
+        greenStrength: 5.0,
+        blueStrength: 5.0,
+        radialStrength: 2.0,
+    },
+    data_mosh: {
+        blockSize: 16,
+        maxOffset: 30,
+        chaos: 0.5,
+        smear: 0.7
+    },
+    ascii_art: {
+        blockSize: 6,
+        gradient: ".:-=+*#%@",
+        invert: false
     }
 };
 
@@ -164,20 +190,66 @@ export default function HomePage() {
         }
     };
 
+    const resetActiveFilter = () => {
+        if (!activeFilter) return;
+
+        const key = activeFilter.toLowerCase();
+
+        const defaults = defaultParamsByFilter[key];
+
+        setFilterParams(prev => ({
+            ...prev,
+            [key]: defaults ? { ...defaults } : {}
+        }));
+    };
+
     useEffect(() => {
-        if (location.state?.imageUrl) {
-            const url = location.state.imageUrl;
+        const state = location.state;
+        if (!state) return;
+
+        if (state.imageId) {
+            const id = state.imageId;
+
+            (async () => {
+                try {
+                    const token = getAuthToken();
+                    if (!token) throw new Error("Not authenticated");
+
+                    const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+
+                    if (!res.ok) throw new Error(await res.text());
+
+                    const blob = await res.blob();
+
+                    const objectUrl = URL.createObjectURL(blob);
+                    setImage(objectUrl);
+
+                    const file = new File([blob], "saved_image.png", { type: blob.type });
+                    setImageFile(file);
+
+                    setProcessedBlob(null);
+                } catch (err) {
+                    console.error("Failed to load image by id", err);
+                }
+            })();
+
+            return;
+        }
+
+        if (state.imageUrl) {
+            const url = state.imageUrl;
             setImage(url);
 
             fetch(url)
-                .then(res => res.blob())
-                .then(blob => {
+                .then((res) => res.blob())
+                .then((blob) => {
                     const file = new File([blob], "uploaded_image.png", { type: blob.type });
                     setImageFile(file);
+                    setProcessedBlob(null);
                 })
-                .catch(err => {
-                    console.error("Failed to load image from URL", err);
-                });
+                .catch((err) => console.error("Failed to load image from URL", err));
         }
     }, [location.state]);
 
@@ -252,7 +324,7 @@ export default function HomePage() {
                             />
                         </div>
 
-                        <div className="p-4 border-t border-blue-200 bg-gray-50">
+                        <div className="p-4 border-t border-blue-200 bg-gray-50 space-y-2">
                             <button
                                 className="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
                                 onClick={() => {
@@ -260,6 +332,13 @@ export default function HomePage() {
                                 }}
                             >
                                 Apply Filter
+                            </button>
+
+                            <button
+                                className="w-full py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors"
+                                onClick={resetActiveFilter}
+                            >
+                                Reset to Default
                             </button>
                         </div>
                     </div>

@@ -1,33 +1,65 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { deleteUserImage } from '../../api';
-import { getAuth } from 'firebase/auth';
-
-export default function SavedImage({ path, onDelete }) {
-    const BASE_URL = 'http://localhost:8080';
-    const fullUrl = `${BASE_URL}/uploads/${path}`;
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { deleteUserImage, getAuthToken} from "../../api";
+export default function SavedImage({ id, onDelete }) {
+    const [src, setSrc] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const navigate = useNavigate();
 
+    useEffect(() => {
+        if (!id) return;
+
+        let objectUrl;
+
+        const loadImage = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const token = getAuthToken();
+                if (!token) throw new Error("Not authenticated");
+
+                const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (!res.ok) {
+                    throw new Error(await res.text());
+                }
+
+                const blob = await res.blob();
+                objectUrl = URL.createObjectURL(blob);
+                setSrc(objectUrl);
+            } catch (e) {
+                setError(e.message || "Failed to load image");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadImage();
+
+        return () => {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        };
+    }, [id]);
+
     const onClick = () => {
-        navigate('/', { state: { imageUrl: fullUrl } });
+        navigate("/", { state: { imageId: id } });
     };
 
     const handleDelete = async (e) => {
         e.stopPropagation();
-        const auth = getAuth();
-        const user = auth.currentUser;
-
-        if (!user) {
-            alert("You must be logged in to delete an image.");
-            return;
-        }
 
         try {
-            await deleteUserImage(user.uid, path);
-            if (onDelete) onDelete(path);
-        } catch (error) {
-            console.error("Delete failed", error);
-            alert("Failed to delete image.");
+            await deleteUserImage(id);
+            onDelete?.(id);
+        } catch (e) {
+            console.error("Delete failed", e);
+            alert(e.message || "Failed to delete image.");
         }
     };
 
@@ -36,12 +68,21 @@ export default function SavedImage({ path, onDelete }) {
             className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 cursor-pointer bg-white border border-gray-300 flex items-center justify-center h-64"
             onClick={onClick}
         >
-            <img
-                src={fullUrl}
-                alt="Saved"
-                className="max-h-full max-w-full"
-                style={{ display: 'block', margin: '0 auto' }}
-            />
+            {loading && <span className="text-gray-400">Loading...</span>}
+
+            {!loading && error && (
+                <span className="text-red-500 text-sm px-2">{error}</span>
+            )}
+
+            {!loading && !error && (
+                <img
+                    src={src}
+                    alt="Saved"
+                    className="max-h-full max-w-full"
+                    draggable={false}
+                />
+            )}
+
             <button
                 onClick={handleDelete}
                 className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded px-2 py-1 text-xs shadow"

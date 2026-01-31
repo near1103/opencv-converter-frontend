@@ -1,129 +1,146 @@
-const BASE_URL = 'http://localhost:8080/api';
+const API = "/api";
+const TOKEN_KEY = "auth_token";
+
+export function setAuthToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function getAuthToken() {
+    return localStorage.getItem(TOKEN_KEY);
+}
+
+export function clearAuthToken() {
+    localStorage.removeItem(TOKEN_KEY);
+}
+
+async function request(url, options = {}) {
+    const res = await fetch(url, options);
+
+    if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        let message = `Request failed (${res.status})`;
+
+        try {
+            if (contentType.includes("application/json")) {
+                const data = await res.json();
+                message = data?.message || JSON.stringify(data);
+            } else {
+                message = await res.text();
+            }
+        } catch (_) {
+        }
+
+        throw new Error(message || `Request failed (${res.status})`);
+    }
+
+    return res;
+}
+
+async function authFetch(url, options = {}) {
+    const token = getAuthToken();
+    if (!token) {
+        throw new Error("User is not authenticated");
+    }
+
+    return request(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            Authorization: `Bearer ${token}`,
+        },
+    });
+}
 
 export async function fetchFormats() {
     try {
-        const response = await fetch(`${BASE_URL}/formats`);
-        if (!response.ok) throw new Error('Failed to fetch formats');
-        return await response.json();
+        const res = await request(`${API}/formats`);
+        return await res.json();
     } catch (error) {
-        console.error('fetchFormats error:', error);
-        return [{ value: 'png', label: 'PNG', mimeType: 'image/png' }];
+        console.error("fetchFormats error:", error);
+        return [{ value: "png", label: "PNG", mimeType: "image/png" }];
     }
+}
+
+export async function registerRequest(email, password) {
+    const res = await request(`${API}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+    if (data?.token) setAuthToken(data.token);
+    return data;
+}
+
+export async function loginRequest(email, password) {
+    const res = await request(`${API}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+    if (!data?.token) throw new Error("Login response does not contain token");
+
+    setAuthToken(data.token);
+    return data;
 }
 
 export async function convertToFormat(file, format) {
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('format', format);
+    formData.append("file", file);
+    formData.append("format", format);
 
-    try {
-        const response = await fetch(`${BASE_URL}/convert/to`, {
-            method: 'POST',
-            body: formData,
-        });
-        if (!response.ok) throw new Error('Failed to convert');
-        return await response.blob();
-    } catch (error) {
-        console.error('convertToFormat error:', error);
-        throw error;
-    }
+    const res = await authFetch(`${API}/convert/to`, {
+        method: "POST",
+        body: formData,
+    });
+
+    return res.blob();
 }
 
 export async function sendFilterRequest(file, filterName, params = {}) {
     const formData = new FormData();
-    formData.append('image', file);
-    formData.append('type', filterName);
+    formData.append("image", file);
+    formData.append("type", filterName);
 
     Object.entries(params).forEach(([key, value]) => {
         formData.append(key, value);
     });
 
-    const response = await fetch('http://localhost:8080/api/image/filter', {
-        method: 'POST',
+    const res = await authFetch(`${API}/image/filter`, {
+        method: "POST",
         body: formData,
     });
 
-    if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
-    }
-
-    return await response.blob();
+    return res.blob();
 }
 
-export async function registerRequest(email, password) {
-    try {
-        const res = await fetch(`${BASE_URL}/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-
-        if (!res.ok) {
-            const message = await res.text();
-            throw new Error(message || 'Registration failed');
-        }
-
-        return await res.json();
-    } catch (err) {
-        console.error('registerRequest error:', err);
-        throw err;
-    }
-}
-
-export async function verifyToken(idToken) {
-    const res = await fetch(`${BASE_URL}/auth/verify`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${idToken}`
-        }
-    });
-
-    if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error || 'Token verification failed');
-    }
-
-    return await res.json();
-}
-
-export async function saveImageToServer(blob, userId, formatId) {
+export async function saveImageToServer(blob, formatId) {
     const formData = new FormData();
-    formData.append('file', blob);
-    formData.append('userId', userId);
-    formData.append('formatId', formatId);
+    formData.append("file", blob);
+    formData.append("formatId", formatId);
 
-    const response = await fetch(`${BASE_URL}/firestore/save`, {
-        method: 'POST',
+    const res = await authFetch(`${API}/firestore/save`, {
+        method: "POST",
         body: formData,
     });
 
-    if (!response.ok) {
-        throw new Error('Failed to save image');
-    }
-
-    return response.json();
+    return res.json();
 }
 
-export async function fetchUserImages(userId) {
-    const response = await fetch(`${BASE_URL}/firestore/load?userId=${userId}`);
-    if (!response.ok) {
-        throw new Error("Failed to load images");
-    }
-    const data = await response.json();
+export async function fetchUserImages() {
+    const res = await authFetch(`${API}/firestore/load`);
+    const data = await res.json();
     return data.images;
 }
 
-export async function deleteUserImage(userId, path) {
-    const url = `${BASE_URL}/firestore/delete?userId=${encodeURIComponent(userId)}&path=${encodeURIComponent(path)}`;
-    const response = await fetch(url, {
-        method: 'DELETE',
-    });
+export async function deleteUserImage(id) {
+    const res = await authFetch(
+        `${API}/firestore/delete?id=${encodeURIComponent(id)}`,
+        { method: "DELETE" }
+    );
 
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to delete image: ${error}`);
-    }
-
-    return response.json();
+    return res.json();
 }

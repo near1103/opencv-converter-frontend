@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import tailwindClasses from '../styles/tailwindClasses';
-import { useUser } from '../UserContext';
-import { auth } from '../firebase';
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import tailwindClasses from "../styles/tailwindClasses";
+import { useUser } from "../UserContext";
 
 export default function Navbar() {
-    const { user, setUser } = useUser();
+    const { user, setUser, logout } = useUser();
     const [menuOpen, setMenuOpen] = useState(false);
     const dropdownRef = useRef(null);
     const navigate = useNavigate();
@@ -16,21 +15,25 @@ export default function Navbar() {
                 setMenuOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const handleLogout = async () => {
-        await auth.signOut();
-        setUser(null);
-        navigate('/login');
+    const handleLogout = () => {
+        setMenuOpen(false);
+        if (logout) {
+            logout();
+        } else {
+            setUser(null);
+        }
+        navigate("/login");
     };
 
     return (
         <nav className={tailwindClasses.navbar}>
             <div
                 className="text-xl font-bold cursor-pointer"
-                onClick={() => navigate('/')}
+                onClick={() => navigate("/")}
                 title="Go to Home"
             >
                 Image Converter
@@ -42,7 +45,7 @@ export default function Navbar() {
                         onClick={() => setMenuOpen(!menuOpen)}
                         className={`${tailwindClasses.navbarBtn} relative`}
                     >
-                        {user.email}
+                        {user.email || "Account"}
                     </button>
 
                     {menuOpen && (
@@ -50,7 +53,7 @@ export default function Navbar() {
                             <button
                                 onClick={() => {
                                     setMenuOpen(false);
-                                    navigate('/saved');
+                                    navigate("/saved");
                                 }}
                                 className="block w-full text-left px-4 py-2 hover:bg-blue-700 transition-colors"
                             >
@@ -78,4 +81,3 @@ export default function Navbar() {
         </nav>
     );
 }
-

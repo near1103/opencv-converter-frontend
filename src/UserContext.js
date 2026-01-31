@@ -1,7 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, getIdToken } from 'firebase/auth';
-import { auth } from './firebase';
-import { verifyToken } from './api';
+import { createContext, useContext, useEffect, useState } from "react";
+import { getAuthToken, clearAuthToken } from "./api";
 
 const UserContext = createContext();
 
@@ -10,23 +8,29 @@ export function UserProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                const token = await getIdToken(firebaseUser);
-                try {
-                    const userData = await verifyToken(token);
-                    setUser({ ...userData, token });
-                } catch (e) {
-                    console.error('Token verification failed', e);
-                    setUser(null);
-                }
-            } else {
-                setUser(null);
-            }
+        const token = getAuthToken();
+        if (!token) {
             setLoading(false);
-        });
+            return;
+        }
 
-        return () => unsubscribe();
+        (async () => {
+            try {
+                const res = await fetch("/api/auth/me", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+
+                const data = await res.json();
+                setUser({ uid: data.uid, email: data.email });
+            } catch (e) {
+                clearAuthToken();
+                setUser(null);
+            } finally {
+                setLoading(false);
+            }
+        })();
     }, []);
 
     return (
