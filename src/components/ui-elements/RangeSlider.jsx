@@ -1,4 +1,8 @@
 import React from "react";
+import Box from "@mui/material/Box";
+import Slider from "@mui/material/Slider";
+
+const minDistance = 10;
 
 export default function RangeSlider({
                                         label,
@@ -8,125 +12,50 @@ export default function RangeSlider({
                                         value = [min, max],
                                         onChange,
                                     }) {
-    const [minVal, maxVal] = value;
+    const handleChange = (event, newValue, activeThumb) => {
+        if (!Array.isArray(newValue)) return;
 
-    const minPercent = ((minVal - min) / (max - min)) * 100;
-    const maxPercent = ((maxVal - min) / (max - min)) * 100;
+        let [newMin, newMax] = newValue;
 
-    const handleMinChange = (e) => {
-        const val = Math.min(Number(e.target.value), maxVal - step);
-        onChange([val, maxVal]);
+        if (activeThumb === 0) {
+            newMin = Math.min(newMin, value[1] - minDistance);
+            onChange([newMin, value[1]]);
+        } else {
+            newMax = Math.max(newMax, value[0] + minDistance);
+            onChange([value[0], newMax]);
+        }
     };
 
-    const handleMaxChange = (e) => {
-        const val = Math.max(Number(e.target.value), minVal + step);
-        onChange([minVal, val]);
-    };
 
     return (
         <div className="mb-6 w-full">
             <label className="block mb-2 text-sm font-medium text-gray-700">
                 {label}:{" "}
                 <span className="text-gray-800 font-semibold">
-          {minVal.toFixed(1)} — {maxVal.toFixed(1)}
+          {value[0].toFixed(1)} — {value[1].toFixed(1)}
         </span>
             </label>
 
-            <div className="relative w-full h-8 flex items-center">
-                <input
-                    type="range"
+            <Box sx={{ width: "100%", px: 1 }}>
+                <Slider
+                    value={value}
+                    onChange={handleChange}
                     min={min}
                     max={max}
                     step={step}
-                    value={minVal}
-                    onChange={handleMinChange}
-                    className="absolute w-full h-2 appearance-none pointer-events-auto"
-                    style={{
-                        zIndex: 3,
+                    valueLabelDisplay="auto"
+                    disableSwap
+                    sx={{
+                        "& .MuiSlider-thumb": {
+                            width: 15,
+                            height: 15,
+                        },
+                        "& .MuiSlider-thumb.Mui-focusVisible": {
+                            boxShadow: "0 0 0 6px rgba(25,118,210,0.2)", // было больше по умолчанию
+                        }
                     }}
                 />
-                <input
-                    type="range"
-                    min={min}
-                    max={max}
-                    step={step}
-                    value={maxVal}
-                    onChange={handleMaxChange}
-                    className="absolute w-full h-2 appearance-none pointer-events-auto"
-                    style={{
-                        zIndex: 4,
-                    }}
-                />
-
-                {/* Фон с подсветкой выбранного диапазона */}
-                <div
-                    className="absolute h-2 rounded-full"
-                    style={{
-                        left: `${minPercent}%`,
-                        width: `${maxPercent - minPercent}%`,
-                        background: "#6b7280",
-                        zIndex: 1,
-                    }}
-                />
-                <div
-                    className="absolute w-full h-2 bg-gray-300 rounded-full"
-                    style={{ zIndex: 0 }}
-                />
-            </div>
-
-            <style jsx>{`
-        input[type="range"] {
-          -webkit-appearance: none;
-          background: transparent;
-          pointer-events: all;
-          border-radius: 9999px;
-        }
-        input[type="range"]::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: #6b7280;
-          border: 2px solid white;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-          cursor: pointer;
-          transition: background 0.3s ease, transform 0.2s ease;
-          position: relative;
-          z-index: 5;
-          margin-top: -8px;
-        }
-        input[type="range"]::-webkit-slider-thumb:hover {
-          background: #4b5563;
-          transform: scale(1.1);
-        }
-        input[type="range"]::-moz-range-thumb {
-          width: 18px;
-          height: 18px;
-          border-radius: 50%;
-          background: #6b7280;
-          border: 2px solid white;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-          cursor: pointer;
-          transition: background 0.3s ease, transform 0.2s ease;
-          position: relative;
-          z-index: 5;
-        }
-        input[type="range"]::-moz-range-thumb:hover {
-          background: #4b5563;
-          transform: scale(1.1);
-        }
-        input[type="range"]::-webkit-slider-runnable-track {
-          height: 6px;
-          border-radius: 9999px;
-          background: transparent;
-        }
-        input[type="range"]::-moz-range-track {
-          height: 6px;
-          border-radius: 9999px;
-          background: transparent;
-        }
-      `}</style>
+            </Box>
         </div>
     );
 }
