@@ -25,7 +25,7 @@ import RotatePanel from "../transformations-panel/RotatePanel";
 import FlipPanel from "../transformations-panel/FlipPanel";
 import CropPanel from "../transformations-panel/CropPanel";
 import ResizePanel from "../transformations-panel/ResizePanel";
-import { sendFilterRequest, getAuthToken } from "../../api";
+import { sendFilterRequest, getAuthToken, transformImage } from "../../api";
 import Toast from "../ui-elements/Toast"
 import BrushPanel from "../manual-panels/BrushPanel";
 import EraserPanel from "../manual-panels/EraserPanel";
@@ -181,6 +181,32 @@ export default function HomePage() {
         }
     }
 
+    async function applyTransformation(type, params) {
+        if (!imageFile && !processedBlob) {
+            setToast({ message: "Load image file first", type: "error" });
+            return;
+        }
+
+        const fileToSend = processedBlob
+            ? new File([processedBlob], "transformed.png", { type: processedBlob.type })
+            : imageFile;
+
+        try {
+            const blob = await transformImage(fileToSend, type, params);
+
+            setProcessedBlob(blob);
+
+            const reader = new FileReader();
+            reader.onloadend = () => setImage(reader.result);
+            reader.readAsDataURL(blob);
+        } catch (e) {
+            setToast({
+                message: "Error applying transformation: " + e.message,
+                type: "error",
+            });
+        }
+    }
+
     const getActiveSidePanel = () => {
         if (activeMenu === "filters" && ActiveFilterPanel) {
             return {
@@ -222,9 +248,23 @@ export default function HomePage() {
 
         if (activeMenu === "transformations" && activeTool) {
             const Panel = TransformPanels[activeTool];
+
+            const commonProps = {
+                applyTransformation,
+            };
+
+            const panelProps =
+                activeTool === "CROP" || activeTool === "RESIZE"
+                    ? { ...commonProps, imageSrc: image }
+                    : commonProps;
+
             return {
                 title: `Transformations • ${activeTool.replace(/_/g, " ")}`,
-                body: Panel ? <Panel /> : <div className="p-4">Tool not found</div>,
+                body: Panel ? (
+                    <Panel {...panelProps} />
+                ) : (
+                    <div>Tool not found</div>
+                ),
             };
         }
 

@@ -3,63 +3,77 @@ import { HiOutlineInformationCircle } from "react-icons/hi";
 import { MdFlip, MdSwapVert } from "react-icons/md";
 import { FaCheckCircle } from "react-icons/fa";
 
-export default function FlipPanel() {
+export default function FlipPanel({ applyTransformation }) {
     const [mode, setMode] = useState("HORIZONTAL");
+    const [loading, setLoading] = useState(false);
+
+    const handleApply = async () => {
+        try {
+            setLoading(true);
+            await applyTransformation("FLIP", { mode });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
-        <div className="p-4 space-y-4">
-            <div className="flex items-start gap-2 text-gray-700">
-                <HiOutlineInformationCircle className="mt-0.5" />
-                <p>Flip the image horizontally or vertically. This is a UI stub (no processing yet).</p>
+        <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm space-y-4">
+            <div className="flex items-start gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <HiOutlineInformationCircle className="text-lg mt-0.5 shrink-0" />
+                <p>Flip the image horizontally or vertically.</p>
             </div>
 
-            <div className="bg-white border rounded-lg p-3 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-                    <MdFlip />
-                    <span>Flip mode</span>
-                </div>
+            <div>
+                <label className="block text-sm font-medium text-blue-900 mb-2">
+                    Flip mode
+                </label>
 
                 <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                            type="radio"
-                            name="flip"
-                            value="HORIZONTAL"
-                            checked={mode === "HORIZONTAL"}
-                            onChange={() => setMode("HORIZONTAL")}
-                        />
-                        <span className="flex items-center gap-2">
-              <MdFlip /> Horizontal (mirror left ↔ right)
+                    <button
+                        type="button"
+                        onClick={() => setMode("HORIZONTAL")}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition ${
+                            mode === "HORIZONTAL"
+                                ? "border-blue-500 bg-blue-50 text-blue-900"
+                                : "border-blue-200 hover:bg-blue-50 text-blue-800"
+                        }`}
+                    >
+            <span className="flex items-center gap-2">
+              <MdFlip />
+              Horizontal (mirror left ↔ right)
             </span>
-                    </label>
+                        {mode === "HORIZONTAL" && <FaCheckCircle className="text-blue-600" />}
+                    </button>
 
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                        <input
-                            type="radio"
-                            name="flip"
-                            value="VERTICAL"
-                            checked={mode === "VERTICAL"}
-                            onChange={() => setMode("VERTICAL")}
-                        />
-                        <span className="flex items-center gap-2">
-              <MdSwapVert /> Vertical (mirror top ↕ bottom)
+                    <button
+                        type="button"
+                        onClick={() => setMode("VERTICAL")}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition ${
+                            mode === "VERTICAL"
+                                ? "border-blue-500 bg-blue-50 text-blue-900"
+                                : "border-blue-200 hover:bg-blue-50 text-blue-800"
+                        }`}
+                    >
+            <span className="flex items-center gap-2">
+              <MdSwapVert />
+              Vertical (mirror top ↕ bottom)
             </span>
-                    </label>
+                        {mode === "VERTICAL" && <FaCheckCircle className="text-blue-600" />}
+                    </button>
                 </div>
             </div>
 
-            <div className="p-3 rounded-lg border bg-blue-50 text-blue-900 text-sm flex items-center gap-2">
-                <FaCheckCircle />
-                <span>
-          Selected: <b>{mode}</b>
-        </span>
+            <div className="text-sm text-blue-900 font-medium">
+                Selected: {mode}
             </div>
 
             <button
-                disabled
-                className="w-full py-2 rounded bg-gray-200 text-gray-600 cursor-not-allowed flex items-center justify-center gap-2"
+                type="button"
+                onClick={handleApply}
+                disabled={loading}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 rounded-lg transition"
             >
-                <MdFlip /> Apply Flip
+                {loading ? "Applying..." : "Apply Flip"}
             </button>
         </div>
     );

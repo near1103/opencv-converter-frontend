@@ -1,94 +1,230 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import ReactCrop, {
+    centerCrop,
+    convertToPixelCrop,
+    makeAspectCrop,
+} from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import { HiOutlineInformationCircle } from "react-icons/hi";
-import { MdCrop, MdOutlineAspectRatio } from "react-icons/md";
-import { FaRegSquare, FaCheckCircle } from "react-icons/fa";
+import { MdCrop, MdRefresh } from "react-icons/md";
+import { FaCheckCircle } from "react-icons/fa";
 
-export default function CropPanel() {
-    const [preset, setPreset] = useState("FREE");
-    const [x, setX] = useState(0);
-    const [y, setY] = useState(0);
-    const [w, setW] = useState(512);
-    const [h, setH] = useState(512);
+function createCenteredCrop(mediaWidth, mediaHeight, aspect) {
+    if (!aspect) {
+        return centerCrop(
+            {
+                unit: "%",
+                width: 70,
+                height: 70,
+            },
+            mediaWidth,
+            mediaHeight
+        );
+    }
+
+    return centerCrop(
+        makeAspectCrop(
+            {
+                unit: "%",
+                width: 70,
+            },
+            aspect,
+            mediaWidth,
+            mediaHeight
+        ),
+        mediaWidth,
+        mediaHeight
+    );
+}
+
+export default function CropPanel({ imageSrc, applyTransformation }) {
+    const [aspectPreset, setAspectPreset] = useState("FREE");
+    const [crop, setCrop] = useState();
+    const [completedCrop, setCompletedCrop] = useState(null);
+    const [imgRef, setImgRef] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    const aspect = useMemo(() => {
+        switch (aspectPreset) {
+            case "SQUARE":
+                return 1;
+            case "LANDSCAPE":
+                return 4 / 3;
+            case "WIDE":
+                return 16 / 9;
+            default:
+                return undefined;
+        }
+    }, [aspectPreset]);
+
+    const ratioLabel = useMemo(() => {
+        switch (aspectPreset) {
+            case "SQUARE":
+                return "1:1";
+            case "LANDSCAPE":
+                return "4:3";
+            case "WIDE":
+                return "16:9";
+            default:
+                return "Free";
+        }
+    }, [aspectPreset]);
+
+    useEffect(() => {
+        setCrop(undefined);
+        setCompletedCrop(null);
+        setImgRef(null);
+    }, [imageSrc]);
+
+    const onImageLoad = (e) => {
+        const { width, height } = e.currentTarget;
+        setImgRef(e.currentTarget);
+
+        const nextCrop = createCenteredCrop(width, height, aspect);
+        setCrop(nextCrop);
+    };
+
+    useEffect(() => {
+        if (!imgRef) return;
+
+        const nextCrop = createCenteredCrop(imgRef.width, imgRef.height, aspect);
+        setCrop(nextCrop);
+        setCompletedCrop(null);
+    }, [aspect, imgRef]);
+
+    const handleReset = () => {
+        if (!imgRef) return;
+
+        const nextCrop = createCenteredCrop(imgRef.width, imgRef.height, aspect);
+        setCrop(nextCrop);
+        setCompletedCrop(null);
+    };
+
+    const handleApply = async () => {
+        if (!imgRef || !completedCrop?.width || !completedCrop?.height) {
+            alert("Please select a crop area first.");
+            return;
+        }
+
+        const pixelCrop = convertToPixelCrop(
+            completedCrop,
+            imgRef.naturalWidth || imgRef.width,
+            imgRef.naturalHeight || imgRef.height
+        );
+
+        try {
+            setLoading(true);
+
+            await applyTransformation("CROP", {
+                x: String(Math.round(pixelCrop.x)),
+                y: String(Math.round(pixelCrop.y)),
+                width: String(Math.round(pixelCrop.width)),
+                height: String(Math.round(pixelCrop.height)),
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
-        <div className="p-4 space-y-4">
-            <div className="flex items-start gap-2 text-gray-700">
-                <HiOutlineInformationCircle className="mt-0.5" />
+        <div className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm space-y-4">
+            <div className="flex items-start gap-2 text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-lg p-3">
+                <HiOutlineInformationCircle className="text-lg mt-0.5 shrink-0" />
                 <p>
-                    Crop a region of the image. This is a UI stub (canvas selection will be added later).
+                    Select the crop area directly on the preview. You can freely resize the
+                    selection in Free mode or keep a fixed ratio with presets.
                 </p>
             </div>
 
-            <div className="bg-white border rounded-lg p-3 space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-                    <MdOutlineAspectRatio />
-                    <span>Aspect ratio</span>
-                </div>
+            <div>
+                <label className="block text-sm font-medium text-blue-900 mb-2">
+                    Aspect ratio
+                </label>
 
-                <select
-                    value={preset}
-                    onChange={(e) => setPreset(e.target.value)}
-                    className="w-full border border-blue-200 rounded px-3 py-2 text-sm"
-                >
-                    <option value="FREE">Free</option>
-                    <option value="1:1">1:1 (Square)</option>
-                    <option value="4:3">4:3</option>
-                    <option value="16:9">16:9</option>
-                </select>
-
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div>
-                        <label className="text-xs text-gray-600">X</label>
-                        <input
-                            type="number"
-                            value={x}
-                            onChange={(e) => setX(Number(e.target.value))}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-600">Y</label>
-                        <input
-                            type="number"
-                            value={y}
-                            onChange={(e) => setY(Number(e.target.value))}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-600">Width</label>
-                        <input
-                            type="number"
-                            value={w}
-                            onChange={(e) => setW(Number(e.target.value))}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs text-gray-600">Height</label>
-                        <input
-                            type="number"
-                            value={h}
-                            onChange={(e) => setH(Number(e.target.value))}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                        />
-                    </div>
+                <div className="grid grid-cols-4 gap-2">
+                    {[
+                        { key: "FREE", label: "Free" },
+                        { key: "SQUARE", label: "1:1" },
+                        { key: "LANDSCAPE", label: "4:3" },
+                        { key: "WIDE", label: "16:9" },
+                    ].map((item) => (
+                        <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => setAspectPreset(item.key)}
+                            className={`px-3 py-2 rounded-lg border text-sm transition ${
+                                aspectPreset === item.key
+                                    ? "border-blue-500 bg-blue-50 text-blue-900"
+                                    : "border-blue-200 text-blue-800 hover:bg-blue-50"
+                            }`}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            <div className="p-3 rounded-lg border bg-blue-50 text-blue-900 text-sm flex items-center gap-2">
-                <FaCheckCircle />
+            <div className="rounded-xl overflow-hidden border border-blue-100 bg-slate-100 p-2">
+                <div className="flex items-center justify-center min-h-[280px] bg-slate-200 rounded-lg overflow-hidden">
+                    {imageSrc ? (
+                        <ReactCrop
+                            crop={crop}
+                            onChange={(_, percentCrop) => setCrop(percentCrop)}
+                            onComplete={(c) => setCompletedCrop(c)}
+                            aspect={aspect}
+                            minWidth={40}
+                            minHeight={40}
+                            keepSelection
+                        >
+                            <img
+                                src={imageSrc}
+                                alt="Crop preview"
+                                onLoad={onImageLoad}
+                                className="max-h-[360px] w-auto object-contain"
+                            />
+                        </ReactCrop>
+                    ) : (
+                        <div className="text-sm text-slate-500">
+                            Load an image to start cropping
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm text-blue-900 bg-blue-50 rounded-lg px-3 py-2">
+                <MdCrop className="text-blue-600 shrink-0" />
                 <span>
-          Crop rect: <b>({x}, {y})</b> • <b>{w}×{h}</b> • Ratio: <b>{preset}</b>
+          {completedCrop?.width && completedCrop?.height
+              ? `Selection: ${Math.round(completedCrop.width)} × ${Math.round(
+                  completedCrop.height
+              )} • Ratio: ${ratioLabel}`
+              : `Selection: not ready • Ratio: ${ratioLabel}`}
         </span>
+                {completedCrop?.width && completedCrop?.height && (
+                    <FaCheckCircle className="text-green-600 ml-auto" />
+                )}
             </div>
 
-            <button
-                disabled
-                className="w-full py-2 rounded bg-gray-200 text-gray-600 cursor-not-allowed flex items-center justify-center gap-2"
-            >
-                <MdCrop /> Apply Crop
-            </button>
+            <div className="flex gap-2">
+                <button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={!imgRef}
+                    className="flex-1 flex items-center justify-center gap-2 border border-blue-200 text-blue-800 hover:bg-blue-50 disabled:bg-slate-100 disabled:text-slate-400 font-medium py-2.5 rounded-lg transition"
+                >
+                    <MdRefresh />
+                    Reset
+                </button>
+
+                <button
+                    type="button"
+                    onClick={handleApply}
+                    disabled={loading || !imageSrc || !completedCrop?.width || !completedCrop?.height}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-medium py-2.5 rounded-lg transition"
+                >
+                    {loading ? "Applying..." : "Apply Crop"}
+                </button>
+            </div>
         </div>
     );
 }

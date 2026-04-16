@@ -117,6 +117,23 @@ export async function sendFilterRequest(file, filterName, params = {}) {
     return res.blob();
 }
 
+export async function transformImage(file, type, params = {}) {
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("type", type);
+
+    Object.entries(params).forEach(([key, value]) => {
+        formData.append(key, value);
+    });
+
+    const res = await authFetch(`${API}/image/transform`, {
+        method: "POST",
+        body: formData,
+    });
+
+    return res.blob();
+}
+
 export async function saveImageToServer(blob, formatId) {
     const formData = new FormData();
     formData.append("file", blob);
