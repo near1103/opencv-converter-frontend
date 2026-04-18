@@ -4,16 +4,20 @@ export default function ImagePreview({
                                          imageSrc,
                                          colorPickerMode = false,
                                          onColorPick,
-                                         showColorPickerHint = false
+                                         showColorPickerHint = false,
+                                         manualTool = null,
+                                         manualConfig = null,
+                                         onManualEdit,
                                      }) {
     const canvasRef = useRef(null);
     const imageRef = useRef(null);
+    const isDrawingRef = useRef(false);
+    const pointsRef = useRef([]);
 
-    const handleImageClick = useCallback((event) => {
-        if (!colorPickerMode || !canvasRef.current || !imageRef.current || !onColorPick) return;
+    const getCanvasCoords = useCallback((event) => {
+        if (!canvasRef.current || !imageRef.current) return null;
 
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
         const rect = imageRef.current.getBoundingClientRect();
 
         const x = event.clientX - rect.left;
@@ -22,16 +26,50 @@ export default function ImagePreview({
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
 
-        const canvasX = Math.floor(x * scaleX);
-        const canvasY = Math.floor(y * scaleY);
+        const mappedX = Math.floor(x * scaleX);
+        const mappedY = Math.floor(y * scaleY);
 
-        if (canvasX < 0 || canvasX >= canvas.width || canvasY < 0 || canvasY >= canvas.height) return;
+        if (
+            mappedX < 0 ||
+            mappedX >= canvas.width ||
+            mappedY < 0 ||
+            mappedY >= canvas.height
+        ) {
+            return null;
+        }
 
-        const imageData = ctx.getImageData(canvasX, canvasY, 1, 1);
-        const [r, g, b] = imageData.data;
+        return {
+            x: mappedX,
+            y: mappedY,
+        };
+    }, []);
 
-        onColorPick({ red: r, green: g, blue: b });
-    }, [colorPickerMode, onColorPick]);
+    const handleImageClick = useCallback((event) => {
+        const coords = getCanvasCoords(event);
+        if (!coords) return;
+
+        if (colorPickerMode && canvasRef.current && onColorPick) {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext("2d");
+            const pixel = ctx.getImageData(coords.x, coords.y, 1, 1).data;
+
+            onColorPick({
+                red: pixel[0],
+                green: pixel[1],
+                blue: pixel[2],
+            });
+            return;
+        }
+
+        if (manualTool === "COLOR_FILL" && manualConfig && onManualEdit) {
+            onManualEdit("COLOR_FILL", {
+                x: coords.x,
+                y: coords.y,
+                color: manualConfig.color,
+                tolerance: manualConfig.tolerance,
+            });
+        }
+    }, [colorPickerMode, getCanvasCoords, onColorPick, manualTool, manualConfig, onManualEdit]);
 
     const loadImageToCanvas = useCallback(() => {
         if (!imageSrc || !canvasRef.current) return;
@@ -43,11 +81,66 @@ export default function ImagePreview({
         img.onload = () => {
             canvas.width = img.width;
             canvas.height = img.height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0);
         };
 
         img.src = imageSrc;
     }, [imageSrc]);
+
+    const handlePointerDown = useCallback((event) => {
+        if (!manualTool || !["BRUSH", "ERASER"].includes(manualTool)) return;
+
+        const coords = getCanvasCoords(event);
+        if (!coords) return;
+
+        isDrawingRef.current = true;
+        pointsRef.current = [coords];
+    }, [manualTool, getCanvasCoords]);
+
+    const handlePointerMove = useCallback((event) => {
+        if (!isDrawingRef.current) return;
+        if (!manualTool || !["BRUSH", "ERASER"].includes(manualTool)) return;
+
+        const coords = getCanvasCoords(event);
+        if (!coords) return;
+
+        pointsRef.current.push(coords);
+    }, [manualTool, getCanvasCoords]);
+
+    const handlePointerUp = useCallback(() => {
+        if (!isDrawingRef.current) return;
+
+        isDrawingRef.current = false;
+
+        if (!manualTool || !manualConfig || !onManualEdit) {
+            pointsRef.current = [];
+            return;
+        }
+
+        const points = [...pointsRef.current];
+        pointsRef.current = [];
+
+        if (points.length < 2) return;
+
+        if (manualTool === "BRUSH") {
+            onManualEdit("BRUSH", {
+                color: manualConfig.color,
+                size: manualConfig.size,
+                opacity: manualConfig.opacity,
+                points,
+            });
+            return;
+        }
+
+        if (manualTool === "ERASER") {
+            onManualEdit("ERASER", {
+                size: manualConfig.size,
+                opacity: manualConfig.opacity ?? 1.0,
+                points,
+            });
+        }
+    }, [manualTool, manualConfig, onManualEdit]);
 
     useEffect(() => {
         loadImageToCanvas();
@@ -57,10 +150,10 @@ export default function ImagePreview({
 
     const topOffset = 80;
     const bottomOffset = 160;
+    const interactiveMode = colorPickerMode || ["BRUSH", "ERASER", "COLOR_FILL"].includes(manualTool);
 
     return (
         <div className="relative inline-block">
-            {/* Hint для режима пипетки */}
             {colorPickerMode && showColorPickerHint && (
                 <div className="absolute top-0 left-0 right-0 z-10 bg-blue-600 text-white px-3 py-2 text-sm rounded-t flex items-center justify-center">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="mr-2">
@@ -72,7 +165,7 @@ export default function ImagePreview({
 
             <div
                 className={`border-2 rounded mt-4 transition-all duration-200 ${
-                    colorPickerMode
+                    interactiveMode
                         ? 'border-blue-500 shadow-lg ring-2 ring-blue-500 ring-opacity-50'
                         : 'border-blue-500'
                 }`}
@@ -87,8 +180,12 @@ export default function ImagePreview({
                     src={imageSrc}
                     alt="Preview"
                     onClick={handleImageClick}
+                    onMouseDown={handlePointerDown}
+                    onMouseMove={handlePointerMove}
+                    onMouseUp={handlePointerUp}
+                    onMouseLeave={handlePointerUp}
                     className={`block transition-all duration-200 ${
-                        colorPickerMode ? 'cursor-crosshair' : 'cursor-default'
+                        interactiveMode ? 'cursor-crosshair' : 'cursor-default'
                     }`}
                     style={{
                         display: 'block',

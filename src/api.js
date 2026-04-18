@@ -134,6 +134,28 @@ export async function transformImage(file, type, params = {}) {
     return res.blob();
 }
 
+export async function sendManualEditRequest(file, toolName, params = {}) {
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("type", toolName);
+
+    Object.entries(params).forEach(([key, value]) => {
+        formData.append(key, value);
+    });
+
+    const res = await authFetch(`${API}/image/manual`, {
+        method: "POST",
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Manual edit request failed");
+    }
+
+    return res.blob();
+}
+
 export async function saveImageToServer(blob, formatId) {
     const formData = new FormData();
     formData.append("file", blob);

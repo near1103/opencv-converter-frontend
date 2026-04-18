@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import NeutralSlider from "../ui-elements/NeutralSlider";
 
 export default function BackgroundPanel({ params, setParams, onColorPickerToggle, colorPickerActive }) {
@@ -11,7 +11,6 @@ export default function BackgroundPanel({ params, setParams, onColorPickerToggle
             blue: color.blue
         });
     }, [params, setParams]);
-
 
     const handleToggleColorPicker = useCallback(() => {
         const newActive = !colorPickerActive;
@@ -84,7 +83,7 @@ export default function BackgroundPanel({ params, setParams, onColorPickerToggle
                             min="0"
                             max="255"
                             value={params.red || 0}
-                            onChange={(e) => setParams({ ...params, red: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => setParams({ ...params, red: parseInt(e.target.value, 10) || 0 })}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                     </div>
@@ -95,7 +94,7 @@ export default function BackgroundPanel({ params, setParams, onColorPickerToggle
                             min="0"
                             max="255"
                             value={params.green || 0}
-                            onChange={(e) => setParams({ ...params, green: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => setParams({ ...params, green: parseInt(e.target.value, 10) || 0 })}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                     </div>
@@ -106,7 +105,7 @@ export default function BackgroundPanel({ params, setParams, onColorPickerToggle
                             min="0"
                             max="255"
                             value={params.blue || 0}
-                            onChange={(e) => setParams({ ...params, blue: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => setParams({ ...params, blue: parseInt(e.target.value, 10) || 0 })}
                             className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                     </div>
@@ -118,7 +117,7 @@ export default function BackgroundPanel({ params, setParams, onColorPickerToggle
                 <NeutralSlider
                     label="Threshold"
                     value={params.threshold || 5.0}
-                    onChange={val => setParams({ ...params, threshold: val })}
+                    onChange={(val) => setParams({ ...params, threshold: val })}
                     min={0}
                     max={100}
                     step={0.1}

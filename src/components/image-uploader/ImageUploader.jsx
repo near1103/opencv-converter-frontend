@@ -1,35 +1,54 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ImageDropZone from './ImageDropZone';
-import ImagePreview from './ImagePreview';
+import ImageEditorCanvas from './ImageEditorCanvas';
 import FormatSelector from './FormatSelector';
 import ImageActions from './ImageActions';
 import Toast from '../ui-elements/Toast';
-import {convertToFormat, fetchFormats, saveImageToServer} from "../../api";
+import {
+    convertToFormat,
+    fetchFormats,
+    saveImageToServer,
+} from "../../api";
 
-
-export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove, processedBlob, onResetBlob, userId, colorPickerMode, onColorPick, showColorPickerHint }) {
+export default function ImageUploader({
+                                          onImageLoad,
+                                          onFileLoad,
+                                          image,
+                                          onRemove,
+                                          processedBlob,
+                                          onResetBlob,
+                                          userId,
+                                          manualTool,
+                                          manualConfig,
+                                          onManualApplyBatch,
+                                          onImageCropApply
+                                      }) {
     const [imageSrc, setImageSrc] = useState(null);
     const [originalImageSrc, setOriginalImageSrc] = useState(null);
     const [selectedFormat, setSelectedFormat] = useState('');
     const [formatOptions, setFormatOptions] = useState([]);
     const [loadingFormats, setLoadingFormats] = useState(true);
     const [file, setFile] = useState(null);
-    const [originalExtension, setOriginalExtension] = useState('');
     const [isConverting, setIsConverting] = useState(false);
     const [toast, setToast] = useState({ message: '', type: '', visible: false });
+
+    const supportedFormats = useMemo(
+        () => ['png', 'jpeg', 'jpg', 'webp', 'gif', 'bmp'],
+        []
+    );
 
     const showToast = (message, type = 'info') => {
         setToast({ message, type, visible: true });
     };
 
     const hideToast = () => {
-        setToast({ ...toast, visible: false });
+        setToast((prev) => ({ ...prev, visible: false }));
     };
 
     useEffect(() => {
         if (image) {
             setImageSrc(image);
-            setOriginalImageSrc(prev => prev || image);
+            setOriginalImageSrc((prev) => prev || image);
         }
     }, [image]);
 
@@ -48,20 +67,18 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
             setSelectedFormat(data[0]?.value || '');
             setLoadingFormats(false);
         };
+
         loadFormats();
     }, []);
-
-    const supportedFormats = ['png', 'jpeg', 'jpg', 'webp', 'gif', 'bmp'];
 
     const onDrop = useCallback(async (acceptedFiles) => {
         if (acceptedFiles.length === 0) return;
 
-        const file = acceptedFiles[0];
-        setFile(file);
+        const uploadedFile = acceptedFiles[0];
+        setFile(uploadedFile);
 
-        const extMatch = file.name.match(/\.(\w+)$/);
+        const extMatch = uploadedFile.name.match(/\.(\w+)$/);
         const extension = extMatch ? extMatch[1].toLowerCase() : '';
-        setOriginalExtension(extension);
 
         const reader = new FileReader();
 
@@ -69,12 +86,12 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
             setImageSrc(result);
             setOriginalImageSrc(result);
             onImageLoad?.(result);
-            onFileLoad?.(file);
+            onFileLoad?.(uploadedFile);
         };
 
         if (!supportedFormats.includes(extension)) {
             try {
-                const blob = await convertToFormat(file, 'png');
+                const blob = await convertToFormat(uploadedFile, 'png');
                 reader.onload = () => handleImage(reader.result);
                 reader.readAsDataURL(blob);
             } catch (err) {
@@ -83,9 +100,9 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
             }
         } else {
             reader.onload = () => handleImage(reader.result);
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(uploadedFile);
         }
-    }, [onImageLoad, onFileLoad]);
+    }, [onImageLoad, onFileLoad, supportedFormats]);
 
     const handleRemove = () => {
         setImageSrc(null);
@@ -106,8 +123,12 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
 
     const handleSave = async () => {
         if (!selectedFormat) return;
+
         const blobToSend = processedBlob || file;
-        if (!blobToSend) return alert('No image to save.');
+        if (!blobToSend) {
+            alert('No image to save.');
+            return;
+        }
 
         setIsConverting(true);
 
@@ -135,6 +156,7 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
 
     const handleSaveServer = async () => {
         if (!selectedFormat) return;
+
         const blobToSend = processedBlob || file;
         if (!blobToSend) {
             showToast('No image to save.', 'error');
@@ -154,19 +176,22 @@ export default function ImageUploader({ onImageLoad, onFileLoad, image, onRemove
         }
     };
 
-
     return (
         <div className="flex flex-col items-center w-full px-4 max-w-5xl mx-auto">
             {toast.visible && (
                 <Toast message={toast.message} type={toast.type} onClose={hideToast} />
             )}
+
             <ImageDropZone onDrop={onDrop} imageSrc={!!imageSrc} />
-            <ImagePreview
+
+            <ImageEditorCanvas
                 imageSrc={imageSrc}
-                colorPickerMode={colorPickerMode}
-                onColorPick={onColorPick}
-                showColorPickerHint={showColorPickerHint}
+                manualTool={manualTool}
+                manualConfig={manualConfig}
+                onManualApplyBatch={onManualApplyBatch}
+                onImageCropApply={onImageCropApply}
             />
+
             {imageSrc && (
                 <>
                     <FormatSelector

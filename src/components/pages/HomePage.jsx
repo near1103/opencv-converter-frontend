@@ -25,7 +25,7 @@ import RotatePanel from "../transformations-panel/RotatePanel";
 import FlipPanel from "../transformations-panel/FlipPanel";
 import CropPanel from "../transformations-panel/CropPanel";
 import ResizePanel from "../transformations-panel/ResizePanel";
-import { sendFilterRequest, getAuthToken, transformImage } from "../../api";
+import { sendFilterRequest, getAuthToken, transformImage, sendManualEditRequest } from "../../api";
 import Toast from "../ui-elements/Toast"
 import BrushPanel from "../manual-panels/BrushPanel";
 import EraserPanel from "../manual-panels/EraserPanel";
@@ -87,6 +87,26 @@ const defaultParamsByFilter = {
     ascii_art: { blockSize: 6, gradient: ".:-=+*#%@", invert: false }
 };
 
+const defaultManualParams = {
+    BRUSH: {
+        color: "#000000",
+        size: 12,
+        opacity: 0.8,
+    },
+    ERASER: {
+        size: 24,
+        opacity: 1.0,
+    },
+    COLOR_FILL: {
+        color: "#000000",
+        tolerance: 20,
+    },
+    SELECT: {
+        mode: "RECTANGLE",
+        feather: 0,
+    },
+};
+
 const TransformPanels = {
     ROTATE: RotatePanel,
     FLIP: FlipPanel,
@@ -131,6 +151,17 @@ export default function HomePage() {
     const HISTORY_TOOLS = ["VIEW_HISTORY", "UNDO", "REDO"];
 
     const ActiveFilterPanel = activeFilter ? FilterPanels[activeFilter] : null;
+
+    const [manualParams, setManualParams] = useState(defaultManualParams);
+
+    const getCurrentFile = () => {
+        if (processedBlob) {
+            return new File([processedBlob], "edited.png", {
+                type: processedBlob.type || "image/png",
+            });
+        }
+        return imageFile;
+    };
 
     const handleColorPickerToggle = (active, handler) => {
         setColorPickerMode(active);
@@ -207,6 +238,86 @@ export default function HomePage() {
         }
     }
 
+    async function applyManualEdit(action) {
+        const fileToSend = getCurrentFile();
+
+        if (!fileToSend) {
+            setToast({ message: "Load image file first", type: "error" });
+            return;
+        }
+
+        try {
+            const payload = { ...action };
+            delete payload.type;
+
+            if (Array.isArray(payload.points)) {
+                payload.points = JSON.stringify(payload.points);
+            }
+
+            const blob = await sendManualEditRequest(fileToSend, action.type, payload);
+
+            setProcessedBlob(blob);
+
+            const reader = new FileReader();
+            reader.onloadend = () => setImage(reader.result);
+            reader.readAsDataURL(blob);
+        } catch (e) {
+            setToast({
+                message: "Error applying manual edit: " + e.message,
+                type: "error",
+            });
+        }
+    }
+
+    async function applyManualEditBatch(actions) {
+        let currentFile = getCurrentFile();
+
+        if (!currentFile) {
+            setToast({ message: "Load image file first", type: "error" });
+            return;
+        }
+
+        try {
+            let latestBlob = null;
+
+            for (const action of actions) {
+                const payload = { ...action };
+                delete payload.type;
+
+                if (Array.isArray(payload.points)) {
+                    payload.points = JSON.stringify(payload.points);
+                }
+
+                latestBlob = await sendManualEditRequest(currentFile, action.type, payload);
+
+                currentFile = new File([latestBlob], "edited-step.png", {
+                    type: latestBlob.type || "image/png",
+                });
+            }
+
+            if (!latestBlob) return;
+
+            setProcessedBlob(latestBlob);
+
+            const reader = new FileReader();
+            reader.onloadend = () => setImage(reader.result);
+            reader.readAsDataURL(latestBlob);
+        } catch (e) {
+            setToast({
+                message: "Error applying manual edits: " + e.message,
+                type: "error",
+            });
+        }
+    }
+
+    async function applyImageCrop(blob) {
+        setProcessedBlob(blob);
+
+        const reader = new FileReader();
+        reader.onloadend = () => setImage(reader.result);
+        reader.readAsDataURL(blob);
+    }
+
     const getActiveSidePanel = () => {
         if (activeMenu === "filters" && ActiveFilterPanel) {
             return {
@@ -270,9 +381,25 @@ export default function HomePage() {
 
         if (activeMenu === "manualEdit" && activeTool) {
             const Panel = ManualPanels[activeTool];
+
             return {
                 title: `Manual Editing • ${activeTool.replace(/_/g, " ")}`,
-                body: Panel ? <Panel /> : <div className="p-4">Tool not found</div>,
+                body: Panel ? (
+                    <Panel
+                        value={manualParams[activeTool]}
+                        onChange={(patch) =>
+                            setManualParams((prev) => ({
+                                ...prev,
+                                [activeTool]: {
+                                    ...prev[activeTool],
+                                    ...patch,
+                                },
+                            }))
+                        }
+                    />
+                ) : (
+                    <div>Tool not found</div>
+                ),
             };
         }
 
@@ -367,25 +494,23 @@ export default function HomePage() {
                     historyTools={HISTORY_TOOLS}
                 />
 
-                <main className="flex-1 flex justify-center p-4 overflow-hidden bg-blue-50">
-                    <ImageUploader
-                        onImageLoad={dataUrl => setImage(dataUrl)}
-                        onFileLoad={file => setImageFile(file)}
-                        image={image}
-                        onRemove={() => {
-                            setImage(null);
-                            setImageFile(null);
-                            setProcessedBlob(null);
-                            setColorPickerMode(false);
-                        }}
-                        processedBlob={processedBlob}
-                        onResetBlob={() => setProcessedBlob(null)}
-                        userId={user?.uid}
-                        colorPickerMode={colorPickerMode}
-                        onColorPick={handleColorPick}
-                        showColorPickerHint={colorPickerMode}
-                    />
-                </main>
+                <ImageUploader
+                    onImageLoad={(dataUrl) => setImage(dataUrl)}
+                    onFileLoad={(file) => setImageFile(file)}
+                    image={image}
+                    onRemove={() => {
+                        setImage(null);
+                        setImageFile(null);
+                        setProcessedBlob(null);
+                    }}
+                    processedBlob={processedBlob}
+                    onResetBlob={() => setProcessedBlob(null)}
+                    userId={user?.uid}
+                    manualTool={activeMenu === "manualEdit" ? activeTool : null}
+                    manualConfig={activeTool ? manualParams[activeTool] : null}
+                    onManualApplyBatch={applyManualEditBatch}
+                    onImageCropApply={applyImageCrop}
+                />
                 {sidePanel && (
                     <SidePanelShell title={sidePanel.title} footer={sidePanel.footer}>
                         {sidePanel.body}
