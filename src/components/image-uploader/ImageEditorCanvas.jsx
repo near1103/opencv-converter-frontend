@@ -81,21 +81,16 @@ function drawSelection(ctx, selection) {
 
     ctx.save();
 
-    // затемняем только внешнюю область, не вырезая картинку
     ctx.fillStyle = "rgba(37, 99, 235, 0.14)";
 
-    // верх
     ctx.fillRect(0, 0, ctx.canvas.width, selection.y);
-    // низ
     ctx.fillRect(
         0,
         selection.y + selection.height,
         ctx.canvas.width,
         ctx.canvas.height - (selection.y + selection.height)
     );
-    // лево
     ctx.fillRect(0, selection.y, selection.x, selection.height);
-    // право
     ctx.fillRect(
         selection.x + selection.width,
         selection.y,
@@ -103,13 +98,11 @@ function drawSelection(ctx, selection) {
         selection.height
     );
 
-    // рамка
     ctx.setLineDash([8, 6]);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#2563eb";
     ctx.strokeRect(selection.x, selection.y, selection.width, selection.height);
 
-    // подпись
     ctx.setLineDash([]);
     ctx.fillStyle = "#2563eb";
     ctx.font = "12px sans-serif";
@@ -135,6 +128,8 @@ export default function ImageEditorCanvas({
                                               manualConfig = null,
                                               onManualApplyBatch,
                                               onImageCropApply,
+                                              colorPickerActive = false,
+                                              onColorPick = null,
                                           }) {
     const sourceCanvasRef = useRef(null);
     const previewCanvasRef = useRef(null);
@@ -238,8 +233,25 @@ export default function ImageEditorCanvas({
         return { x: mappedX, y: mappedY };
     }, []);
 
+    const pickColorFromCanvas = useCallback((coords) => {
+        const sourceCanvas = sourceCanvasRef.current;
+        if (!sourceCanvas) return null;
+
+        const ctx = sourceCanvas.getContext("2d");
+        const pixel = ctx.getImageData(coords.x, coords.y, 1, 1).data;
+
+        const [red, green, blue] = pixel;
+
+        const hex = `#${((1 << 24) + (red << 16) + (green << 8) + blue)
+            .toString(16)
+            .slice(1)}`;
+
+        return { red, green, blue, hex };
+    }, []);
+
     const handlePointerDown = useCallback(
         (event) => {
+            if (colorPickerActive) return;
             if (!manualTool || !manualConfig || isApplying) return;
 
             const coords = getCanvasCoords(event);
@@ -286,12 +298,12 @@ export default function ImageEditorCanvas({
                 setIsDrawing(true);
             }
         },
-        [manualTool, manualConfig, getCanvasCoords, isApplying]
+        [manualTool, manualConfig, getCanvasCoords, isApplying, colorPickerActive]
     );
 
     const handlePointerMove = useCallback(
         (event) => {
-            if (isApplying) return;
+            if (colorPickerActive || isApplying) return;
 
             const coords = getCanvasCoords(event);
             if (!coords) return;
@@ -317,6 +329,7 @@ export default function ImageEditorCanvas({
             });
         },
         [
+            colorPickerActive,
             isApplying,
             manualTool,
             isSelecting,
@@ -329,6 +342,8 @@ export default function ImageEditorCanvas({
     );
 
     const handlePointerUp = useCallback(() => {
+        if (colorPickerActive) return;
+
         if (manualTool === "SELECT" && isSelecting) {
             setIsSelecting(false);
             return;
@@ -347,14 +362,22 @@ export default function ImageEditorCanvas({
 
             return null;
         });
-    }, [manualTool, isSelecting, isDrawing]);
+    }, [manualTool, isSelecting, isDrawing, colorPickerActive]);
 
     const handleClick = useCallback(
         (event) => {
-            if (manualTool !== "COLOR_FILL" || !manualConfig || isApplying) return;
-
             const coords = getCanvasCoords(event);
             if (!coords) return;
+
+            if (colorPickerActive && onColorPick) {
+                const pickedColor = pickColorFromCanvas(coords);
+                if (pickedColor) {
+                    onColorPick(pickedColor);
+                }
+                return;
+            }
+
+            if (manualTool !== "COLOR_FILL" || !manualConfig || isApplying) return;
 
             const fillAction = {
                 type: "COLOR_FILL",
@@ -366,11 +389,19 @@ export default function ImageEditorCanvas({
 
             setDraftActions((prev) => [...prev, fillAction]);
         },
-        [manualTool, manualConfig, getCanvasCoords, isApplying]
+        [
+            manualTool,
+            manualConfig,
+            getCanvasCoords,
+            isApplying,
+            colorPickerActive,
+            onColorPick,
+            pickColorFromCanvas,
+        ]
     );
 
     const handleUndoLast = useCallback(() => {
-        if (isApplying) return;
+        if (isApplying || colorPickerActive) return;
 
         if (currentStroke) {
             setCurrentStroke(null);
@@ -386,10 +417,10 @@ export default function ImageEditorCanvas({
         }
 
         setDraftActions((prev) => prev.slice(0, -1));
-    }, [currentStroke, selectionDraft, isApplying]);
+    }, [currentStroke, selectionDraft, isApplying, colorPickerActive]);
 
     const handleClearDraft = useCallback(() => {
-        if (isApplying) return;
+        if (isApplying || colorPickerActive) return;
 
         setDraftActions([]);
         setCurrentStroke(null);
@@ -398,10 +429,10 @@ export default function ImageEditorCanvas({
         setSelectionDraft(null);
         setSelectionStart(null);
         setIsSelecting(false);
-    }, [isApplying]);
+    }, [isApplying, colorPickerActive]);
 
     const handleApply = useCallback(async () => {
-        if (isApplying) return;
+        if (isApplying || colorPickerActive) return;
 
         if (manualTool === "SELECT") {
             if (!selectionDraft || selectionDraft.width <= 0 || selectionDraft.height <= 0) {
@@ -467,6 +498,7 @@ export default function ImageEditorCanvas({
         draftActions,
         currentStroke,
         isApplying,
+        colorPickerActive,
     ]);
 
     if (!imageSrc) return null;
@@ -482,7 +514,7 @@ export default function ImageEditorCanvas({
         <div className="flex flex-col items-center gap-3">
             <div
                 className={`relative border-2 rounded shadow-sm ${
-                    isManualMode ? "border-blue-500" : "border-blue-400"
+                    isManualMode || colorPickerActive ? "border-blue-500" : "border-blue-400"
                 }`}
                 style={{
                     maxWidth: "100%",
@@ -504,7 +536,13 @@ export default function ImageEditorCanvas({
                     onMouseUp={handlePointerUp}
                     onMouseLeave={handlePointerUp}
                     onClick={handleClick}
-                    className={`block ${isManualMode ? "cursor-crosshair" : "cursor-default"}`}
+                    className={`block ${
+                        colorPickerActive
+                            ? "cursor-crosshair"
+                            : isManualMode
+                                ? "cursor-crosshair"
+                                : "cursor-default"
+                    }`}
                     style={{
                         display: "block",
                         maxHeight: "420px",
@@ -514,13 +552,16 @@ export default function ImageEditorCanvas({
                     }}
                 />
 
-                <canvas
-                    ref={sourceCanvasRef}
-                    style={{ display: "none" }}
-                />
+                <canvas ref={sourceCanvasRef} style={{ display: "none" }} />
             </div>
 
-            {manualTool === "SELECT" && (
+            {colorPickerActive && (
+                <div className="text-sm text-blue-700 font-medium">
+                    Color picker is active. Click on the image to choose a color.
+                </div>
+            )}
+
+            {manualTool === "SELECT" && !colorPickerActive && (
                 <div className="text-sm text-gray-700">
                     {selectMode === "FREEHAND"
                         ? "Freehand selection is not implemented yet."
@@ -530,7 +571,7 @@ export default function ImageEditorCanvas({
                 </div>
             )}
 
-            {isManualMode && (
+            {isManualMode && !colorPickerActive && (
                 <div className="flex flex-col items-center gap-2">
                     <div className="text-sm text-gray-600">
                         Draft actions: <b>{draftActions.length + (currentStroke ? 1 : 0)}</b>

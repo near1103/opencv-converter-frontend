@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useUser } from "../../UserContext";
-import { fetchUserImages } from "../../api";
+import { fetchProjects } from "../../api";
 import SavedImage from "../../components/ui-elements/SavedImage";
 import Navbar from "../../components/Navbar";
 
 export default function SavedImagesPage() {
     const { user } = useUser();
-    const [images, setImages] = useState([]);
+    const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -16,14 +16,16 @@ export default function SavedImagesPage() {
         setLoading(true);
         setError(null);
 
-        fetchUserImages()
-            .then(setImages) // <-- теперь это массив объектов
+        fetchProjects()
+            .then(setProjects)
             .catch((err) => setError(err.message))
             .finally(() => setLoading(false));
     }, [user]);
 
-    const handleDelete = (deletedId) => {
-        setImages((prev) => prev.filter((img) => img.id !== deletedId));
+    const handleDelete = (deletedProjectId) => {
+        setProjects((prev) =>
+            prev.filter((project) => project.projectId !== deletedProjectId)
+        );
     };
 
     return (
@@ -46,18 +48,17 @@ export default function SavedImagesPage() {
                     </p>
                 )}
 
-                {!loading && images.length === 0 && (
+                {!loading && projects.length === 0 && (
                     <p className="text-gray-600 text-center mt-10">
-                        You didn't save any images.
+                        You didn&apos;t save any projects yet.
                     </p>
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                    {images.map((img) => (
+                    {projects.map((project) => (
                         <SavedImage
-                            key={img.id}
-                            id={img.id}
-                            formatId={img.formatId}
+                            key={project.projectId}
+                            project={project}
                             onDelete={handleDelete}
                         />
                     ))}

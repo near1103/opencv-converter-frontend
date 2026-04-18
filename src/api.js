@@ -148,11 +148,6 @@ export async function sendManualEditRequest(file, toolName, params = {}) {
         body: formData,
     });
 
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Manual edit request failed");
-    }
-
     return res.blob();
 }
 
@@ -182,4 +177,142 @@ export async function deleteUserImage(id) {
     );
 
     return res.json();
+}
+
+/* =========================
+   PROJECTS API
+   ========================= */
+
+export async function saveProjectToServer({
+                                              originalFile,
+                                              resultFile,
+                                              projectName,
+                                              sourceFormatId,
+                                              resultFormatId,
+                                              operations,
+                                              projectId,
+                                          }) {
+    const formData = new FormData();
+
+    formData.append("originalImage", originalFile);
+    formData.append("resultImage", resultFile);
+    formData.append("projectName", projectName);
+    formData.append("sourceFormatId", sourceFormatId);
+    formData.append("resultFormatId", resultFormatId);
+    formData.append("operationsJson", JSON.stringify(operations || []));
+
+    if (projectId) {
+        formData.append("projectId", projectId);
+    }
+
+    const res = await authFetch(`${API}/projects/save`, {
+        method: "POST",
+        body: formData,
+    });
+
+    return res.json();
+}
+
+export async function fetchProjects() {
+    const res = await authFetch(`${API}/projects`);
+    return res.json();
+}
+
+export async function fetchProjectById(projectId) {
+    const res = await authFetch(`${API}/projects/${encodeURIComponent(projectId)}`);
+    return res.json();
+}
+
+export async function fetchProjectOperations(projectId) {
+    const res = await authFetch(
+        `${API}/projects/${encodeURIComponent(projectId)}/operations`
+    );
+    return res.json();
+}
+
+export async function deleteProject(projectId) {
+    const res = await authFetch(
+        `${API}/projects/${encodeURIComponent(projectId)}`,
+        { method: "DELETE" }
+    );
+    return res.json();
+}
+
+export async function rebuildProjectFromBase(baseFile, operations = []) {
+    let currentFile = baseFile;
+
+    for (const operation of operations) {
+        console.log("[REBUILD] current operation:", operation);
+
+        if (operation.category === "FILTER") {
+            const blob = await sendFilterRequest(
+                currentFile,
+                operation.tool,
+                operation.params || {}
+            );
+
+            currentFile = new File([blob], "rebuilt-filter.png", {
+                type: blob.type || "image/png",
+            });
+            continue;
+        }
+
+        if (operation.category === "TRANSFORM") {
+            const blob = await transformImage(
+                currentFile,
+                operation.tool,
+                operation.params || {}
+            );
+
+            currentFile = new File([blob], "rebuilt-transform.png", {
+                type: blob.type || "image/png",
+            });
+            continue;
+        }
+
+        if (operation.category === "MANUAL") {
+            if (operation.tool === "MANUAL_BATCH") {
+                const nestedActions = operation.params?.actions || [];
+
+                for (const nestedAction of nestedActions) {
+                    const payload = { ...nestedAction };
+                    const nestedTool = payload.type;
+                    delete payload.type;
+
+                    if (Array.isArray(payload.points)) {
+                        payload.points = JSON.stringify(payload.points);
+                    }
+
+                    const blob = await sendManualEditRequest(
+                        currentFile,
+                        nestedTool,
+                        payload || {}
+                    );
+
+                    currentFile = new File([blob], "rebuilt-manual-batch.png", {
+                        type: blob.type || "image/png",
+                    });
+                }
+
+                continue;
+            }
+
+            const blob = await sendManualEditRequest(
+                currentFile,
+                operation.tool,
+                operation.params || {}
+            );
+
+            currentFile = new File([blob], "rebuilt-manual.png", {
+                type: blob.type || "image/png",
+            });
+            continue;
+        }
+
+        throw new Error(
+            `Unsupported operation category: ${operation.category}, tool: ${operation.tool}`
+        );
+    }
+
+    return currentFile;
 }

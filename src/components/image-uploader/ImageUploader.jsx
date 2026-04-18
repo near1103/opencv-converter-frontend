@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import ImageDropZone from './ImageDropZone';
-import ImageEditorCanvas from './ImageEditorCanvas';
-import FormatSelector from './FormatSelector';
-import ImageActions from './ImageActions';
-import Toast from '../ui-elements/Toast';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import ImageDropZone from "./ImageDropZone";
+import ImageEditorCanvas from "./ImageEditorCanvas";
+import FormatSelector from "./FormatSelector";
+import ImageActions from "./ImageActions";
+import Toast from "../ui-elements/Toast";
 import {
     convertToFormat,
     fetchFormats,
-    saveImageToServer,
+    saveProjectToServer,
 } from "../../api";
 
 export default function ImageUploader({
@@ -21,23 +21,28 @@ export default function ImageUploader({
                                           manualTool,
                                           manualConfig,
                                           onManualApplyBatch,
-                                          onImageCropApply
+                                          onImageCropApply,
+                                          colorPickerActive,
+                                          onColorPick,
+                                          originalFile,
+                                          currentFile,
+                                          persistedOperations,
                                       }) {
     const [imageSrc, setImageSrc] = useState(null);
     const [originalImageSrc, setOriginalImageSrc] = useState(null);
-    const [selectedFormat, setSelectedFormat] = useState('');
+    const [selectedFormat, setSelectedFormat] = useState("");
     const [formatOptions, setFormatOptions] = useState([]);
     const [loadingFormats, setLoadingFormats] = useState(true);
     const [file, setFile] = useState(null);
     const [isConverting, setIsConverting] = useState(false);
-    const [toast, setToast] = useState({ message: '', type: '', visible: false });
+    const [toast, setToast] = useState({ message: "", type: "", visible: false });
 
     const supportedFormats = useMemo(
-        () => ['png', 'jpeg', 'jpg', 'webp', 'gif', 'bmp'],
+        () => ["png", "jpeg", "jpg", "webp", "gif", "bmp"],
         []
     );
 
-    const showToast = (message, type = 'info') => {
+    const showToast = (message, type = "info") => {
         setToast({ message, type, visible: true });
     };
 
@@ -64,7 +69,7 @@ export default function ImageUploader({
         const loadFormats = async () => {
             const data = await fetchFormats();
             setFormatOptions(data);
-            setSelectedFormat(data[0]?.value || '');
+            setSelectedFormat(data[0]?.value || "");
             setLoadingFormats(false);
         };
 
@@ -78,7 +83,7 @@ export default function ImageUploader({
         setFile(uploadedFile);
 
         const extMatch = uploadedFile.name.match(/\.(\w+)$/);
-        const extension = extMatch ? extMatch[1].toLowerCase() : '';
+        const extension = extMatch ? extMatch[1].toLowerCase() : "";
 
         const reader = new FileReader();
 
@@ -91,12 +96,12 @@ export default function ImageUploader({
 
         if (!supportedFormats.includes(extension)) {
             try {
-                const blob = await convertToFormat(uploadedFile, 'png');
+                const blob = await convertToFormat(uploadedFile, "png");
                 reader.onload = () => handleImage(reader.result);
                 reader.readAsDataURL(blob);
             } catch (err) {
-                console.error('Preview conversion error:', err);
-                alert('Preview failed. Try another file.');
+                console.error("Preview conversion error:", err);
+                alert("Preview failed. Try another file.");
             }
         } else {
             reader.onload = () => handleImage(reader.result);
@@ -108,7 +113,7 @@ export default function ImageUploader({
         setImageSrc(null);
         setOriginalImageSrc(null);
         setFile(null);
-        setSelectedFormat(formatOptions[0]?.value || '');
+        setSelectedFormat(formatOptions[0]?.value || "");
         onImageLoad?.(null);
         onRemove?.();
     };
@@ -126,13 +131,13 @@ export default function ImageUploader({
 
         const blobToSend = processedBlob || file;
         if (!blobToSend) {
-            alert('No image to save.');
+            alert("No image to save.");
             return;
         }
 
         setIsConverting(true);
 
-        const format = formatOptions.find(f => f.value === selectedFormat);
+        const format = formatOptions.find((f) => f.value === selectedFormat);
         const mimeType = format?.mimeType || `image/${selectedFormat}`;
         const fileName = file ? file.name : `image.${selectedFormat}`;
         const fileToSend = new File([blobToSend], fileName, { type: mimeType });
@@ -140,15 +145,15 @@ export default function ImageUploader({
         try {
             const blob = await convertToFormat(fileToSend, selectedFormat);
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
+            const a = document.createElement("a");
             a.href = url;
             a.download = `converted.${selectedFormat}`;
             a.click();
             a.remove();
             window.URL.revokeObjectURL(url);
         } catch (err) {
-            console.error('Save error:', err);
-            alert('Failed to save image.');
+            console.error("Save error:", err);
+            alert("Failed to save image.");
         } finally {
             setIsConverting(false);
         }
@@ -157,20 +162,30 @@ export default function ImageUploader({
     const handleSaveServer = async () => {
         if (!selectedFormat) return;
 
-        const blobToSend = processedBlob || file;
-        if (!blobToSend) {
-            showToast('No image to save.', 'error');
+        if (!originalFile || !currentFile) {
+            showToast("No image data to save as project.", "error");
             return;
         }
 
         setIsConverting(true);
 
         try {
-            await saveImageToServer(blobToSend, userId, selectedFormat);
-            showToast('Image saved successfully!', 'success');
+            await saveProjectToServer({
+                originalFile,
+                resultFile: currentFile,
+                projectName: originalFile?.name
+                    ? originalFile.name.replace(/\.[^/.]+$/, "")
+                    : "Untitled project",
+                sourceFormatId:
+                    originalFile?.name?.split(".").pop()?.toLowerCase() || "png",
+                resultFormatId: selectedFormat,
+                operations: persistedOperations || [],
+            });
+
+            showToast("Project saved successfully!", "success");
         } catch (err) {
-            console.error('Save to server error:', err);
-            showToast('Failed to save image on server.', 'error');
+            console.error("Save project error:", err);
+            showToast(`Failed to save project: ${err.message}`, "error");
         } finally {
             setIsConverting(false);
         }
@@ -190,6 +205,8 @@ export default function ImageUploader({
                 manualConfig={manualConfig}
                 onManualApplyBatch={onManualApplyBatch}
                 onImageCropApply={onImageCropApply}
+                colorPickerActive={colorPickerActive}
+                onColorPick={onColorPick}
             />
 
             {imageSrc && (

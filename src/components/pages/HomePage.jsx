@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from "react";
 import Navbar from "../Navbar";
 import Sidebar from "../Sidebar";
 import ImageUploader from "../image-uploader/ImageUploader";
-import { useUser } from '../../UserContext';
-import { useLocation } from 'react-router-dom';
+import { useUser } from "../../UserContext";
+import { useLocation } from "react-router-dom";
 
 import BackgroundPanel from "../filter-panels/BackgroundPanel";
 import PixelatePanel from "../filter-panels/PixelatePanel";
@@ -25,8 +25,14 @@ import RotatePanel from "../transformations-panel/RotatePanel";
 import FlipPanel from "../transformations-panel/FlipPanel";
 import CropPanel from "../transformations-panel/CropPanel";
 import ResizePanel from "../transformations-panel/ResizePanel";
-import { sendFilterRequest, getAuthToken, transformImage, sendManualEditRequest } from "../../api";
-import Toast from "../ui-elements/Toast"
+import {
+    sendFilterRequest,
+    getAuthToken,
+    transformImage,
+    sendManualEditRequest,
+    rebuildProjectFromBase
+} from "../../api";
+import Toast from "../ui-elements/Toast";
 import BrushPanel from "../manual-panels/BrushPanel";
 import EraserPanel from "../manual-panels/EraserPanel";
 import SelectPanel from "../manual-panels/SelectPanel";
@@ -34,6 +40,7 @@ import ColorFillPanel from "../manual-panels/ColorFillPanel";
 import HistoryViewPanel from "../history-panels/HistoryViewPanel";
 import UndoPanel from "../history-panels/UndoPanel";
 import RedoPanel from "../history-panels/RedoPanel";
+import useEditorHistory from "../../hooks/useEditorHistory";
 
 const FILTERS = [
     "RGB_SHIFT",
@@ -50,7 +57,7 @@ const FILTERS = [
     "NEGATIVE",
     "CHROMATIC_ABERRATION",
     "DATA_MOSH",
-    "ASCII_ART"
+    "ASCII_ART",
 ];
 
 const FilterPanels = {
@@ -68,7 +75,7 @@ const FilterPanels = {
     NEGATIVE: NegativePanel,
     CHROMATIC_ABERRATION: ChromaticAberrationPanel,
     DATA_MOSH: DataMoshPanel,
-    ASCII_ART: ASCIIGradientPanel
+    ASCII_ART: ASCIIGradientPanel,
 };
 
 const defaultParamsByFilter = {
@@ -82,9 +89,14 @@ const defaultParamsByFilter = {
     blur: { kernelSize: 5 },
     gaussian_blur: { kernelSize: 5 },
     contrast: { alpha: 1.0 },
-    chromatic_aberration: { redStrength: 5.0, greenStrength: 5.0, blueStrength: 5.0, radialStrength: 2.0 },
+    chromatic_aberration: {
+        redStrength: 5.0,
+        greenStrength: 5.0,
+        blueStrength: 5.0,
+        radialStrength: 2.0,
+    },
     data_mosh: { blockSize: 16, maxOffset: 30, chaos: 0.5, smear: 0.7 },
-    ascii_art: { blockSize: 6, gradient: ".:-=+*#%@", invert: false }
+    ascii_art: { blockSize: 6, gradient: ".:-=+*#%@", invert: false },
 };
 
 const defaultManualParams = {
@@ -154,6 +166,19 @@ export default function HomePage() {
 
     const [manualParams, setManualParams] = useState(defaultManualParams);
 
+    const {
+        canUndo,
+        canRedo,
+        historyItems,
+        persistedOperations,
+        initializeHistory,
+        pushState,
+        undo,
+        redo,
+        clearHistory,
+        loadHistoryFromOperations,
+    } = useEditorHistory();
+
     const getCurrentFile = () => {
         if (processedBlob) {
             return new File([processedBlob], "edited.png", {
@@ -161,6 +186,22 @@ export default function HomePage() {
             });
         }
         return imageFile;
+    };
+
+    const handleFileLoaded = (file, dataUrl) => {
+        setImage(dataUrl);
+        setImageFile(file);
+        setProcessedBlob(null);
+
+        initializeHistory({
+            image: dataUrl,
+            imageFile: file,
+            processedBlob: null,
+        });
+    };
+
+    const buildPersistedOperations = () => {
+        return persistedOperations;
     };
 
     const handleColorPickerToggle = (active, handler) => {
@@ -190,6 +231,39 @@ export default function HomePage() {
         }));
     };
 
+    const restoreSnapshot = (snapshot) => {
+        if (!snapshot) return;
+
+        setImage(snapshot.image || null);
+        setImageFile(snapshot.imageFile || null);
+        setProcessedBlob(snapshot.processedBlob || null);
+    };
+
+    const handleUndo = () => {
+        const snapshot = undo();
+        if (!snapshot) {
+            setToast({ message: "Nothing to undo", type: "error" });
+            return;
+        }
+        restoreSnapshot(snapshot);
+    };
+
+    const handleRedo = () => {
+        const snapshot = redo();
+        if (!snapshot) {
+            setToast({ message: "Nothing to redo", type: "error" });
+            return;
+        }
+        restoreSnapshot(snapshot);
+    };
+
+    const handleRemoveImage = () => {
+        setImage(null);
+        setImageFile(null);
+        setProcessedBlob(null);
+        clearHistory();
+    };
+
     async function applyFilter(filterName, params) {
         if (!imageFile && !processedBlob) {
             setToast({ message: "Load image file first", type: "error" });
@@ -205,7 +279,26 @@ export default function HomePage() {
             setProcessedBlob(blob);
 
             const reader = new FileReader();
-            reader.onloadend = () => setImage(reader.result);
+            reader.onloadend = () => {
+                const nextImage = reader.result;
+
+                setImage(nextImage);
+
+                pushState({
+                    image: nextImage,
+                    imageFile: fileToSend,
+                    processedBlob: blob,
+                    operation: {
+                        category: "FILTER",
+                        tool: filterName,
+                        params: params || {},
+                        title: filterName.replace(/_/g, " "),
+                        subtitle: Object.entries(params || {})
+                            .map(([k, v]) => `${k}=${v}`)
+                            .join(", "),
+                    },
+                });
+            };
             reader.readAsDataURL(blob);
         } catch (e) {
             setToast({ message: "Error applying filter: " + e.message, type: "error" });
@@ -228,7 +321,26 @@ export default function HomePage() {
             setProcessedBlob(blob);
 
             const reader = new FileReader();
-            reader.onloadend = () => setImage(reader.result);
+            reader.onloadend = () => {
+                const nextImage = reader.result;
+
+                setImage(nextImage);
+
+                pushState({
+                    image: nextImage,
+                    imageFile: fileToSend,
+                    processedBlob: blob,
+                    operation: {
+                        category: "TRANSFORM",
+                        tool: type,
+                        params: params || {},
+                        title: type.replace(/_/g, " "),
+                        subtitle: Object.entries(params || {})
+                            .map(([k, v]) => `${k}=${v}`)
+                            .join(", "),
+                    },
+                });
+            };
             reader.readAsDataURL(blob);
         } catch (e) {
             setToast({
@@ -259,7 +371,26 @@ export default function HomePage() {
             setProcessedBlob(blob);
 
             const reader = new FileReader();
-            reader.onloadend = () => setImage(reader.result);
+            reader.onloadend = () => {
+                const nextImage = reader.result;
+
+                setImage(nextImage);
+
+                pushState({
+                    image: nextImage,
+                    imageFile: fileToSend,
+                    processedBlob: blob,
+                    operation: {
+                        category: "MANUAL",
+                        tool: action.type,
+                        params: payload || {},
+                        title: action.type.replace(/_/g, " "),
+                        subtitle: Object.entries(payload || {})
+                            .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+                            .join(", "),
+                    },
+                });
+            };
             reader.readAsDataURL(blob);
         } catch (e) {
             setToast({
@@ -300,7 +431,38 @@ export default function HomePage() {
             setProcessedBlob(latestBlob);
 
             const reader = new FileReader();
-            reader.onloadend = () => setImage(reader.result);
+            reader.onloadend = () => {
+                const nextImage = reader.result;
+
+                setImage(nextImage);
+
+                pushState({
+                    image: nextImage,
+                    imageFile: currentFile,
+                    processedBlob: latestBlob,
+                    operation: {
+                        category: "MANUAL",
+                        tool: "MANUAL_BATCH",
+                        params: {
+                            actions: actions.map((action) => {
+                                const normalized = { ...action };
+
+                                if (Array.isArray(normalized.points)) {
+                                    normalized.points = normalized.points.map((p) => ({
+                                        x: p.x,
+                                        y: p.y,
+                                    }));
+                                }
+
+                                return normalized;
+                            }),
+                            actionsCount: actions.length,
+                        },
+                        title: "Batch manual edit",
+                        subtitle: `${actions.length} actions`,
+                    },
+                });
+            };
             reader.readAsDataURL(latestBlob);
         } catch (e) {
             setToast({
@@ -311,10 +473,29 @@ export default function HomePage() {
     }
 
     async function applyImageCrop(blob) {
+        const currentFile = getCurrentFile();
+
         setProcessedBlob(blob);
 
         const reader = new FileReader();
-        reader.onloadend = () => setImage(reader.result);
+        reader.onloadend = () => {
+            const nextImage = reader.result;
+
+            setImage(nextImage);
+
+            pushState({
+                image: nextImage,
+                imageFile: currentFile,
+                processedBlob: blob,
+                operation: {
+                    category: "TRANSFORM",
+                    tool: "CROP",
+                    params: {},
+                    title: "Crop",
+                    subtitle: "Applied from editor canvas",
+                },
+            });
+        };
         reader.readAsDataURL(blob);
     }
 
@@ -371,11 +552,7 @@ export default function HomePage() {
 
             return {
                 title: `Transformations • ${activeTool.replace(/_/g, " ")}`,
-                body: Panel ? (
-                    <Panel {...panelProps} />
-                ) : (
-                    <div>Tool not found</div>
-                ),
+                body: Panel ? <Panel {...panelProps} /> : <div>Tool not found</div>,
             };
         }
 
@@ -405,9 +582,19 @@ export default function HomePage() {
 
         if (activeMenu === "history" && activeTool) {
             const Panel = HistoryPanels[activeTool];
+
+            const sharedProps = {
+                canUndo,
+                canRedo,
+                onUndo: handleUndo,
+                onRedo: handleRedo,
+                onClear: clearHistory,
+                items: historyItems,
+            };
+
             return {
                 title: `History • ${activeTool.replace(/_/g, " ")}`,
-                body: Panel ? <Panel /> : <div className="p-4">Tool not found</div>,
+                body: Panel ? <Panel {...sharedProps} /> : <div>Tool not found</div>,
             };
         }
 
@@ -420,8 +607,109 @@ export default function HomePage() {
         const state = location.state;
         if (!state) return;
 
+        if (state.projectId) {
+            const projectId = state.projectId;
+
+            (async () => {
+                try {
+                    const token = getAuthToken();
+                    if (!token) throw new Error("Not authenticated");
+
+                    const detailsRes = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (!detailsRes.ok) throw new Error(await detailsRes.text());
+
+                    const details = await detailsRes.json();
+                    const operations = details?.operations || [];
+
+                    const baseRes = await fetch(
+                        `/api/projects/${encodeURIComponent(projectId)}/base-image`,
+                        {
+                            headers: { Authorization: `Bearer ${token}` },
+                        }
+                    );
+                    if (!baseRes.ok) throw new Error(await baseRes.text());
+
+                    const baseBlob = await baseRes.blob();
+                    const baseFile = new File([baseBlob], "project_base.png", {
+                        type: baseBlob.type || "image/png",
+                    });
+
+                    const baseReader = new FileReader();
+
+                    baseReader.onloadend = async () => {
+                        const baseImageDataUrl = baseReader.result;
+
+                        if (!operations.length) {
+                            setImage(baseImageDataUrl);
+                            setImageFile(baseFile);
+                            setProcessedBlob(null);
+
+                            initializeHistory({
+                                image: baseImageDataUrl,
+                                imageFile: baseFile,
+                                processedBlob: null,
+                            });
+                            return;
+                        }
+
+                        let currentFile = baseFile;
+                        const rebuiltSteps = [];
+
+                        for (const op of operations) {
+                            const rebuiltFile = await rebuildProjectFromBase(currentFile, [op]);
+
+                            const stepBlob = rebuiltFile;
+                            const stepFile = rebuiltFile;
+
+                            const stepDataUrl = await new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result);
+                                reader.readAsDataURL(stepBlob);
+                            });
+
+                            rebuiltSteps.push({
+                                category: op.category,
+                                tool: op.tool,
+                                params: op.params || {},
+                                snapshotImage: stepDataUrl,
+                                snapshotFile: stepFile,
+                                snapshotBlob: stepBlob,
+                            });
+
+                            currentFile = rebuiltFile;
+                        }
+
+                        const finalStep = rebuiltSteps[rebuiltSteps.length - 1];
+
+                        setImage(finalStep.snapshotImage);
+                        setImageFile(baseFile);
+                        setProcessedBlob(finalStep.snapshotBlob);
+
+                        loadHistoryFromOperations(
+                            {
+                                image: baseImageDataUrl,
+                                imageFile: baseFile,
+                                processedBlob: null,
+                            },
+                            rebuiltSteps
+                        );
+                    };
+
+                    baseReader.readAsDataURL(baseBlob);
+                } catch (err) {
+                    setToast({ message: "Failed to load project", type: "error" });
+                    console.error("Failed to load project", err);
+                }
+            })();
+
+            return;
+        }
+
         if (state.imageId) {
             const id = state.imageId;
+
             (async () => {
                 try {
                     const token = getAuthToken();
@@ -434,36 +722,51 @@ export default function HomePage() {
 
                     const blob = await res.blob();
                     const objectUrl = URL.createObjectURL(blob);
-                    setImage(objectUrl);
-
                     const file = new File([blob], "saved_image.png", { type: blob.type });
+
+                    setImage(objectUrl);
                     setImageFile(file);
                     setProcessedBlob(null);
+
+                    initializeHistory({
+                        image: objectUrl,
+                        imageFile: file,
+                        processedBlob: null,
+                    });
                 } catch (err) {
                     setToast({ message: "Failed to load image", type: "error" });
                     console.error("Failed to load image by id", err);
                 }
             })();
+
             return;
         }
 
         if (state.imageUrl) {
             const url = state.imageUrl;
-            setImage(url);
 
             fetch(url)
                 .then((res) => res.blob())
                 .then((blob) => {
+                    const objectUrl = URL.createObjectURL(blob);
                     const file = new File([blob], "uploaded_image.png", { type: blob.type });
+
+                    setImage(objectUrl);
                     setImageFile(file);
                     setProcessedBlob(null);
+
+                    initializeHistory({
+                        image: objectUrl,
+                        imageFile: file,
+                        processedBlob: null,
+                    });
                 })
                 .catch((err) => {
                     setToast({ message: "Failed to load image", type: "error" });
                     console.error("Failed to load image from URL", err);
                 });
         }
-    }, [location.state]);
+    }, [location.state, initializeHistory]);
 
     useEffect(() => {
         if (activeFilter) {
@@ -495,14 +798,19 @@ export default function HomePage() {
                 />
 
                 <ImageUploader
-                    onImageLoad={(dataUrl) => setImage(dataUrl)}
-                    onFileLoad={(file) => setImageFile(file)}
-                    image={image}
-                    onRemove={() => {
-                        setImage(null);
-                        setImageFile(null);
-                        setProcessedBlob(null);
+                    onImageLoad={(dataUrl) => {
+                        setImage(dataUrl);
                     }}
+                    onFileLoad={(file) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            const dataUrl = reader.result;
+                            handleFileLoaded(file, dataUrl);
+                        };
+                        reader.readAsDataURL(file);
+                    }}
+                    image={image}
+                    onRemove={handleRemoveImage}
                     processedBlob={processedBlob}
                     onResetBlob={() => setProcessedBlob(null)}
                     userId={user?.uid}
@@ -510,7 +818,13 @@ export default function HomePage() {
                     manualConfig={activeTool ? manualParams[activeTool] : null}
                     onManualApplyBatch={applyManualEditBatch}
                     onImageCropApply={applyImageCrop}
+                    colorPickerActive={colorPickerMode}
+                    onColorPick={handleColorPick}
+                    originalFile={imageFile}
+                    currentFile={getCurrentFile()}
+                    persistedOperations={persistedOperations}
                 />
+
                 {sidePanel && (
                     <SidePanelShell title={sidePanel.title} footer={sidePanel.footer}>
                         {sidePanel.body}
@@ -518,7 +832,6 @@ export default function HomePage() {
                 )}
             </div>
 
-            {/* Toast */}
             {toast && (
                 <Toast
                     message={toast.message}

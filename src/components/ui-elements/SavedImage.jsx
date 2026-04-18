@@ -1,30 +1,38 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { deleteUserImage, getAuthToken} from "../../api";
-export default function SavedImage({ id, onDelete }) {
-    const [src, setSrc] = useState("");
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+import { deleteProject, getAuthToken } from "../../api";
+
+export default function SavedImage({ project, onDelete }) {
     const navigate = useNavigate();
 
+    const {
+        projectId,
+        name,
+        resultFormatId,
+        updatedAt,
+        operationsCount,
+        previewTool,
+    } = project;
+
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [previewError, setPreviewError] = useState(false);
+
     useEffect(() => {
-        if (!id) return;
+        let objectUrl = null;
 
-        let objectUrl;
-
-        const loadImage = async () => {
+        const loadPreview = async () => {
             try {
-                setLoading(true);
-                setError(null);
-
                 const token = getAuthToken();
                 if (!token) throw new Error("Not authenticated");
 
-                const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
+                const res = await fetch(
+                    `/api/projects/${encodeURIComponent(projectId)}/image`,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
 
                 if (!res.ok) {
                     throw new Error(await res.text());
@@ -32,63 +40,94 @@ export default function SavedImage({ id, onDelete }) {
 
                 const blob = await res.blob();
                 objectUrl = URL.createObjectURL(blob);
-                setSrc(objectUrl);
-            } catch (e) {
-                setError(e.message || "Failed to load image");
-            } finally {
-                setLoading(false);
+                setPreviewUrl(objectUrl);
+                setPreviewError(false);
+            } catch (error) {
+                console.error("Failed to load project preview:", error);
+                setPreviewError(true);
             }
         };
 
-        loadImage();
+        loadPreview();
 
         return () => {
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
         };
-    }, [id]);
-
-    const onClick = () => {
-        navigate("/", { state: { imageId: id } });
-    };
+    }, [projectId]);
 
     const handleDelete = async (e) => {
         e.stopPropagation();
 
         try {
-            await deleteUserImage(id);
-            onDelete?.(id);
-        } catch (e) {
-            console.error("Delete failed", e);
-            alert(e.message || "Failed to delete image.");
+            await deleteProject(projectId);
+            onDelete?.(projectId);
+        } catch (error) {
+            console.error("Delete project error:", error);
+            alert("Failed to delete project.");
         }
     };
 
+    const handleOpen = () => {
+        navigate("/", {
+            state: {
+                projectId,
+            },
+        });
+    };
+
+    const formattedDate = updatedAt
+        ? new Date(updatedAt).toLocaleString()
+        : "Unknown date";
+
     return (
         <div
-            className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 cursor-pointer bg-white border border-gray-300 flex items-center justify-center h-64"
-            onClick={onClick}
+            onClick={handleOpen}
+            className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden cursor-pointer hover:shadow-lg transition"
         >
-            {loading && <span className="text-gray-400">Loading...</span>}
+            <div className="relative h-60 bg-gray-100 flex items-center justify-center overflow-hidden">
+                {previewUrl && !previewError ? (
+                    <img
+                        src={previewUrl}
+                        alt={name || "Saved project"}
+                        className="max-h-full max-w-full object-contain"
+                    />
+                ) : (
+                    <div className="text-sm text-gray-400">Preview unavailable</div>
+                )}
 
-            {!loading && error && (
-                <span className="text-red-500 text-sm px-2">{error}</span>
-            )}
+                <button
+                    onClick={handleDelete}
+                    className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-sm px-3 py-1 rounded"
+                >
+                    Delete
+                </button>
+            </div>
 
-            {!loading && !error && (
-                <img
-                    src={src}
-                    alt="Saved"
-                    className="max-h-full max-w-full"
-                    draggable={false}
-                />
-            )}
+            <div className="p-3 space-y-1">
+                <div className="font-semibold text-gray-800 truncate">
+                    {name || "Untitled project"}
+                </div>
 
-            <button
-                onClick={handleDelete}
-                className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white rounded px-2 py-1 text-xs shadow"
-            >
-                Delete
-            </button>
+                <div className="text-sm text-gray-500">
+                    Format: {resultFormatId || "unknown"}
+                </div>
+
+                <div className="text-sm text-gray-500">
+                    Operations: {operationsCount ?? 0}
+                </div>
+
+                {previewTool && (
+                    <div className="text-sm text-gray-500 truncate">
+                        Last tool: {previewTool}
+                    </div>
+                )}
+
+                <div className="text-xs text-gray-400">
+                    Updated: {formattedDate}
+                </div>
+            </div>
         </div>
     );
 }
