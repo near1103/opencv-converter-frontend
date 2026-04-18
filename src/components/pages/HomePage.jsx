@@ -4,7 +4,7 @@ import Sidebar from "../Sidebar";
 import ImageUploader from "../image-uploader/ImageUploader";
 import { useUser } from "../../UserContext";
 import { useLocation } from "react-router-dom";
-
+import { useGlobalLoading } from "../../loading/LoadingContext";
 import BackgroundPanel from "../filter-panels/BackgroundPanel";
 import PixelatePanel from "../filter-panels/PixelatePanel";
 import RGBShiftPanel from "../filter-panels/RGBShiftPanel";
@@ -154,6 +154,7 @@ export default function HomePage() {
     const [toast, setToast] = useState(null);
 
     const { user } = useUser();
+    const { withLoading } = useGlobalLoading();
 
     const [colorPickerMode, setColorPickerMode] = useState(false);
     const colorPickHandlerRef = useRef(null);
@@ -275,31 +276,33 @@ export default function HomePage() {
             : imageFile;
 
         try {
-            const blob = await sendFilterRequest(fileToSend, filterName, params);
-            setProcessedBlob(blob);
+            await withLoading(async () => {
+                const blob = await sendFilterRequest(fileToSend, filterName, params);
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const nextImage = reader.result;
+                setProcessedBlob(blob);
 
-                setImage(nextImage);
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const nextImage = reader.result;
+                    setImage(nextImage);
 
-                pushState({
-                    image: nextImage,
-                    imageFile: fileToSend,
-                    processedBlob: blob,
-                    operation: {
-                        category: "FILTER",
-                        tool: filterName,
-                        params: params || {},
-                        title: filterName.replace(/_/g, " "),
-                        subtitle: Object.entries(params || {})
-                            .map(([k, v]) => `${k}=${v}`)
-                            .join(", "),
-                    },
-                });
-            };
-            reader.readAsDataURL(blob);
+                    pushState({
+                        image: nextImage,
+                        imageFile: fileToSend,
+                        processedBlob: blob,
+                        operation: {
+                            category: "FILTER",
+                            tool: filterName,
+                            params: params || {},
+                            title: filterName.replace(/_/g, " "),
+                            subtitle: Object.entries(params || {})
+                                .map(([k, v]) => `${k}=${v}`)
+                                .join(", "),
+                        },
+                    });
+                };
+                reader.readAsDataURL(blob);
+            }, "Applying filter...");
         } catch (e) {
             setToast({ message: "Error applying filter: " + e.message, type: "error" });
         }
@@ -316,32 +319,33 @@ export default function HomePage() {
             : imageFile;
 
         try {
-            const blob = await transformImage(fileToSend, type, params);
+            await withLoading(async () => {
+                const blob = await transformImage(fileToSend, type, params);
 
-            setProcessedBlob(blob);
+                setProcessedBlob(blob);
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const nextImage = reader.result;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const nextImage = reader.result;
+                    setImage(nextImage);
 
-                setImage(nextImage);
-
-                pushState({
-                    image: nextImage,
-                    imageFile: fileToSend,
-                    processedBlob: blob,
-                    operation: {
-                        category: "TRANSFORM",
-                        tool: type,
-                        params: params || {},
-                        title: type.replace(/_/g, " "),
-                        subtitle: Object.entries(params || {})
-                            .map(([k, v]) => `${k}=${v}`)
-                            .join(", "),
-                    },
-                });
-            };
-            reader.readAsDataURL(blob);
+                    pushState({
+                        image: nextImage,
+                        imageFile: fileToSend,
+                        processedBlob: blob,
+                        operation: {
+                            category: "TRANSFORM",
+                            tool: type,
+                            params: params || {},
+                            title: type.replace(/_/g, " "),
+                            subtitle: Object.entries(params || {})
+                                .map(([k, v]) => `${k}=${v}`)
+                                .join(", "),
+                        },
+                    });
+                };
+                reader.readAsDataURL(blob);
+            }, "Applying transformation...");
         } catch (e) {
             setToast({
                 message: "Error applying transformation: " + e.message,
@@ -359,39 +363,41 @@ export default function HomePage() {
         }
 
         try {
-            const payload = { ...action };
-            delete payload.type;
+            await withLoading(async () => {
+                const payload = { ...action };
+                delete payload.type;
 
-            if (Array.isArray(payload.points)) {
-                payload.points = JSON.stringify(payload.points);
-            }
+                if (Array.isArray(payload.points)) {
+                    payload.points = JSON.stringify(payload.points);
+                }
 
-            const blob = await sendManualEditRequest(fileToSend, action.type, payload);
+                const blob = await sendManualEditRequest(fileToSend, action.type, payload);
 
-            setProcessedBlob(blob);
+                setProcessedBlob(blob);
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const nextImage = reader.result;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const nextImage = reader.result;
 
-                setImage(nextImage);
+                    setImage(nextImage);
 
-                pushState({
-                    image: nextImage,
-                    imageFile: fileToSend,
-                    processedBlob: blob,
-                    operation: {
-                        category: "MANUAL",
-                        tool: action.type,
-                        params: payload || {},
-                        title: action.type.replace(/_/g, " "),
-                        subtitle: Object.entries(payload || {})
-                            .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
-                            .join(", "),
-                    },
-                });
-            };
-            reader.readAsDataURL(blob);
+                    pushState({
+                        image: nextImage,
+                        imageFile: fileToSend,
+                        processedBlob: blob,
+                        operation: {
+                            category: "MANUAL",
+                            tool: action.type,
+                            params: payload || {},
+                            title: action.type.replace(/_/g, " "),
+                            subtitle: Object.entries(payload || {})
+                                .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+                                .join(", "),
+                        },
+                    });
+                };
+                reader.readAsDataURL(blob);
+            }, "Applying edit...");
         } catch (e) {
             setToast({
                 message: "Error applying manual edit: " + e.message,
@@ -409,61 +415,63 @@ export default function HomePage() {
         }
 
         try {
-            let latestBlob = null;
+            await withLoading(async () => {
+                let latestBlob = null;
 
-            for (const action of actions) {
-                const payload = { ...action };
-                delete payload.type;
+                for (const action of actions) {
+                    const payload = { ...action };
+                    delete payload.type;
 
-                if (Array.isArray(payload.points)) {
-                    payload.points = JSON.stringify(payload.points);
+                    if (Array.isArray(payload.points)) {
+                        payload.points = JSON.stringify(payload.points);
+                    }
+
+                    latestBlob = await sendManualEditRequest(currentFile, action.type, payload);
+
+                    currentFile = new File([latestBlob], "edited-step.png", {
+                        type: latestBlob.type || "image/png",
+                    });
                 }
 
-                latestBlob = await sendManualEditRequest(currentFile, action.type, payload);
+                if (!latestBlob) return;
 
-                currentFile = new File([latestBlob], "edited-step.png", {
-                    type: latestBlob.type || "image/png",
-                });
-            }
+                setProcessedBlob(latestBlob);
 
-            if (!latestBlob) return;
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const nextImage = reader.result;
 
-            setProcessedBlob(latestBlob);
+                    setImage(nextImage);
 
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                const nextImage = reader.result;
+                    pushState({
+                        image: nextImage,
+                        imageFile: currentFile,
+                        processedBlob: latestBlob,
+                        operation: {
+                            category: "MANUAL",
+                            tool: "MANUAL_BATCH",
+                            params: {
+                                actions: actions.map((action) => {
+                                    const normalized = { ...action };
 
-                setImage(nextImage);
+                                    if (Array.isArray(normalized.points)) {
+                                        normalized.points = normalized.points.map((p) => ({
+                                            x: p.x,
+                                            y: p.y,
+                                        }));
+                                    }
 
-                pushState({
-                    image: nextImage,
-                    imageFile: currentFile,
-                    processedBlob: latestBlob,
-                    operation: {
-                        category: "MANUAL",
-                        tool: "MANUAL_BATCH",
-                        params: {
-                            actions: actions.map((action) => {
-                                const normalized = { ...action };
-
-                                if (Array.isArray(normalized.points)) {
-                                    normalized.points = normalized.points.map((p) => ({
-                                        x: p.x,
-                                        y: p.y,
-                                    }));
-                                }
-
-                                return normalized;
-                            }),
-                            actionsCount: actions.length,
+                                    return normalized;
+                                }),
+                                actionsCount: actions.length,
+                            },
+                            title: "Batch manual edit",
+                            subtitle: `${actions.length} actions`,
                         },
-                        title: "Batch manual edit",
-                        subtitle: `${actions.length} actions`,
-                    },
-                });
-            };
-            reader.readAsDataURL(latestBlob);
+                    });
+                };
+                reader.readAsDataURL(latestBlob);
+            }, "Applying edits...");
         } catch (e) {
             setToast({
                 message: "Error applying manual edits: " + e.message,
@@ -612,34 +620,36 @@ export default function HomePage() {
 
             (async () => {
                 try {
-                    const token = getAuthToken();
-                    if (!token) throw new Error("Not authenticated");
+                    await withLoading(async () => {
+                        const token = getAuthToken();
+                        if (!token) throw new Error("Not authenticated");
 
-                    const detailsRes = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    });
-                    if (!detailsRes.ok) throw new Error(await detailsRes.text());
-
-                    const details = await detailsRes.json();
-                    const operations = details?.operations || [];
-
-                    const baseRes = await fetch(
-                        `/api/projects/${encodeURIComponent(projectId)}/base-image`,
-                        {
+                        const detailsRes = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
                             headers: { Authorization: `Bearer ${token}` },
-                        }
-                    );
-                    if (!baseRes.ok) throw new Error(await baseRes.text());
+                        });
+                        if (!detailsRes.ok) throw new Error(await detailsRes.text());
 
-                    const baseBlob = await baseRes.blob();
-                    const baseFile = new File([baseBlob], "project_base.png", {
-                        type: baseBlob.type || "image/png",
-                    });
+                        const details = await detailsRes.json();
+                        const operations = details?.operations || [];
 
-                    const baseReader = new FileReader();
+                        const baseRes = await fetch(
+                            `/api/projects/${encodeURIComponent(projectId)}/base-image`,
+                            {
+                                headers: { Authorization: `Bearer ${token}` },
+                            }
+                        );
+                        if (!baseRes.ok) throw new Error(await baseRes.text());
 
-                    baseReader.onloadend = async () => {
-                        const baseImageDataUrl = baseReader.result;
+                        const baseBlob = await baseRes.blob();
+                        const baseFile = new File([baseBlob], "project_base.png", {
+                            type: baseBlob.type || "image/png",
+                        });
+
+                        const baseImageDataUrl = await new Promise((resolve) => {
+                            const baseReader = new FileReader();
+                            baseReader.onloadend = () => resolve(baseReader.result);
+                            baseReader.readAsDataURL(baseBlob);
+                        });
 
                         if (!operations.length) {
                             setImage(baseImageDataUrl);
@@ -695,9 +705,7 @@ export default function HomePage() {
                             },
                             rebuiltSteps
                         );
-                    };
-
-                    baseReader.readAsDataURL(baseBlob);
+                    }, "Loading project...");
                 } catch (err) {
                     setToast({ message: "Failed to load project", type: "error" });
                     console.error("Failed to load project", err);
@@ -712,27 +720,34 @@ export default function HomePage() {
 
             (async () => {
                 try {
-                    const token = getAuthToken();
-                    if (!token) throw new Error("Not authenticated");
+                    await withLoading(async () => {
+                        const token = getAuthToken();
+                        if (!token) throw new Error("Not authenticated");
 
-                    const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
-                        headers: { Authorization: `Bearer ${token}` },
-                    });
-                    if (!res.ok) throw new Error(await res.text());
+                        const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+                            headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (!res.ok) throw new Error(await res.text());
 
-                    const blob = await res.blob();
-                    const objectUrl = URL.createObjectURL(blob);
-                    const file = new File([blob], "saved_image.png", { type: blob.type });
+                        const blob = await res.blob();
+                        const dataUrl = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
 
-                    setImage(objectUrl);
-                    setImageFile(file);
-                    setProcessedBlob(null);
+                        const file = new File([blob], "saved_image.png", { type: blob.type });
 
-                    initializeHistory({
-                        image: objectUrl,
-                        imageFile: file,
-                        processedBlob: null,
-                    });
+                        setImage(dataUrl);
+                        setImageFile(file);
+                        setProcessedBlob(null);
+
+                        initializeHistory({
+                            image: dataUrl,
+                            imageFile: file,
+                            processedBlob: null,
+                        });
+                    }, "Loading image...");
                 } catch (err) {
                     setToast({ message: "Failed to load image", type: "error" });
                     console.error("Failed to load image by id", err);
@@ -745,28 +760,38 @@ export default function HomePage() {
         if (state.imageUrl) {
             const url = state.imageUrl;
 
-            fetch(url)
-                .then((res) => res.blob())
-                .then((blob) => {
-                    const objectUrl = URL.createObjectURL(blob);
-                    const file = new File([blob], "uploaded_image.png", { type: blob.type });
+            (async () => {
+                try {
+                    await withLoading(async () => {
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error("Failed to fetch image");
 
-                    setImage(objectUrl);
-                    setImageFile(file);
-                    setProcessedBlob(null);
+                        const blob = await res.blob();
+                        const dataUrl = await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.readAsDataURL(blob);
+                        });
 
-                    initializeHistory({
-                        image: objectUrl,
-                        imageFile: file,
-                        processedBlob: null,
-                    });
-                })
-                .catch((err) => {
+                        const file = new File([blob], "uploaded_image.png", { type: blob.type });
+
+                        setImage(dataUrl);
+                        setImageFile(file);
+                        setProcessedBlob(null);
+
+                        initializeHistory({
+                            image: dataUrl,
+                            imageFile: file,
+                            processedBlob: null,
+                        });
+                    }, "Loading image...");
+                } catch (err) {
                     setToast({ message: "Failed to load image", type: "error" });
                     console.error("Failed to load image from URL", err);
-                });
+                }
+            })();
         }
-    }, [location.state, initializeHistory]);
+    }, [location.state, initializeHistory, loadHistoryFromOperations, withLoading]);
 
     useEffect(() => {
         if (activeFilter) {

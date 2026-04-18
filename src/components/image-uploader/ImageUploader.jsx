@@ -4,6 +4,7 @@ import ImageEditorCanvas from "./ImageEditorCanvas";
 import FormatSelector from "./FormatSelector";
 import ImageActions from "./ImageActions";
 import Toast from "../ui-elements/Toast";
+import { useGlobalLoading } from "../../loading/LoadingContext";
 import {
     convertToFormat,
     fetchFormats,
@@ -37,6 +38,8 @@ export default function ImageUploader({
     const [isConverting, setIsConverting] = useState(false);
     const [toast, setToast] = useState({ message: "", type: "", visible: false });
 
+    const { withLoading } = useGlobalLoading();
+
     const supportedFormats = useMemo(
         () => ["png", "jpeg", "jpg", "webp", "gif", "bmp"],
         []
@@ -67,10 +70,13 @@ export default function ImageUploader({
 
     useEffect(() => {
         const loadFormats = async () => {
-            const data = await fetchFormats();
-            setFormatOptions(data);
-            setSelectedFormat(data[0]?.value || "");
-            setLoadingFormats(false);
+            try {
+                const data = await fetchFormats();
+                setFormatOptions(data);
+                setSelectedFormat(data[0]?.value || "");
+            } finally {
+                setLoadingFormats(false);
+            }
         };
 
         loadFormats();
@@ -96,9 +102,11 @@ export default function ImageUploader({
 
         if (!supportedFormats.includes(extension)) {
             try {
-                const blob = await convertToFormat(uploadedFile, "png");
-                reader.onload = () => handleImage(reader.result);
-                reader.readAsDataURL(blob);
+                await withLoading(async () => {
+                    const blob = await convertToFormat(uploadedFile, "png");
+                    reader.onload = () => handleImage(reader.result);
+                    reader.readAsDataURL(blob);
+                }, "Preparing image...");
             } catch (err) {
                 console.error("Preview conversion error:", err);
                 alert("Preview failed. Try another file.");
@@ -107,7 +115,7 @@ export default function ImageUploader({
             reader.onload = () => handleImage(reader.result);
             reader.readAsDataURL(uploadedFile);
         }
-    }, [onImageLoad, onFileLoad, supportedFormats]);
+    }, [onImageLoad, onFileLoad, supportedFormats, withLoading]);
 
     const handleRemove = () => {
         setImageSrc(null);
@@ -137,20 +145,24 @@ export default function ImageUploader({
 
         setIsConverting(true);
 
-        const format = formatOptions.find((f) => f.value === selectedFormat);
-        const mimeType = format?.mimeType || `image/${selectedFormat}`;
-        const fileName = file ? file.name : `image.${selectedFormat}`;
-        const fileToSend = new File([blobToSend], fileName, { type: mimeType });
-
         try {
-            const blob = await convertToFormat(fileToSend, selectedFormat);
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `converted.${selectedFormat}`;
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+            await withLoading(async () => {
+                const format = formatOptions.find((f) => f.value === selectedFormat);
+                const mimeType = format?.mimeType || `image/${selectedFormat}`;
+                const fileName = file ? file.name : `image.${selectedFormat}`;
+                const fileToSend = new File([blobToSend], fileName, { type: mimeType });
+
+                const blob = await convertToFormat(fileToSend, selectedFormat);
+                const url = window.URL.createObjectURL(blob);
+
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `converted.${selectedFormat}`;
+                a.click();
+                a.remove();
+
+                window.URL.revokeObjectURL(url);
+            }, "Converting image...");
         } catch (err) {
             console.error("Save error:", err);
             alert("Failed to save image.");
@@ -170,17 +182,19 @@ export default function ImageUploader({
         setIsConverting(true);
 
         try {
-            await saveProjectToServer({
-                originalFile,
-                resultFile: currentFile,
-                projectName: originalFile?.name
-                    ? originalFile.name.replace(/\.[^/.]+$/, "")
-                    : "Untitled project",
-                sourceFormatId:
-                    originalFile?.name?.split(".").pop()?.toLowerCase() || "png",
-                resultFormatId: selectedFormat,
-                operations: persistedOperations || [],
-            });
+            await withLoading(async () => {
+                await saveProjectToServer({
+                    originalFile,
+                    resultFile: currentFile,
+                    projectName: originalFile?.name
+                        ? originalFile.name.replace(/\.[^/.]+$/, "")
+                        : "Untitled project",
+                    sourceFormatId:
+                        originalFile?.name?.split(".").pop()?.toLowerCase() || "png",
+                    resultFormatId: selectedFormat,
+                    operations: persistedOperations || [],
+                });
+            }, "Saving project...");
 
             showToast("Project saved successfully!", "success");
         } catch (err) {
