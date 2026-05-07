@@ -74,12 +74,6 @@ export default function RotatePanel({ applyTransformation }) {
                 </button>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-                <FaUndoAlt />
-                <FaRedoAlt />
-                <span>History integration can be added later.</span>
-            </div>
-
             <button
                 type="button"
                 onClick={handleApply}
