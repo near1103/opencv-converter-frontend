@@ -34,6 +34,7 @@ export default function ImageUploader({
     const [formatOptions, setFormatOptions] = useState([]);
     const [loadingFormats, setLoadingFormats] = useState(true);
     const [file, setFile] = useState(null);
+    const [isGif, setIsGif] = useState(false);
     const [isConverting, setIsConverting] = useState(false);
     const [toast, setToast] = useState({ message: "", type: "", visible: false });
 
@@ -62,7 +63,14 @@ export default function ImageUploader({
     useEffect(() => {
         if (processedBlob && processedBlob instanceof Blob) {
             const reader = new FileReader();
-            reader.onload = () => setImageSrc(reader.result);
+
+            reader.onload = () => {
+                setImageSrc(reader.result);
+
+                const processedIsGif = processedBlob.type === "image/gif";
+                setIsGif(processedIsGif);
+            };
+
             reader.readAsDataURL(processedBlob);
         }
     }, [processedBlob]);
@@ -109,8 +117,13 @@ export default function ImageUploader({
                 "error"
             );
             setFile(null);
+            setIsGif(false);
             return;
         }
+
+        const isUploadedGif =
+            uploadedFile.type === "image/gif" ||
+            uploadedFile.name.toLowerCase().endsWith(".gif");
 
         const reader = new FileReader();
 
@@ -118,6 +131,8 @@ export default function ImageUploader({
             setImageSrc(reader.result);
             setOriginalImageSrc(reader.result);
             setFile(uploadedFile);
+            setIsGif(isUploadedGif);
+
             onImageLoad?.(reader.result);
             onFileLoad?.(uploadedFile);
         };
@@ -133,6 +148,7 @@ export default function ImageUploader({
         setImageSrc(null);
         setOriginalImageSrc(null);
         setFile(null);
+        setIsGif(false);
         setSelectedFormat(formatOptions[0]?.value || "");
         onImageLoad?.(null);
         onRemove?.();
@@ -141,6 +157,13 @@ export default function ImageUploader({
     const handleReset = () => {
         if (originalImageSrc) {
             setImageSrc(originalImageSrc);
+
+            const originalIsGif =
+                file?.type === "image/gif" ||
+                file?.name?.toLowerCase().endsWith(".gif");
+
+            setIsGif(!!originalIsGif);
+
             onImageLoad?.(originalImageSrc);
             onResetBlob?.();
         }
@@ -227,6 +250,7 @@ export default function ImageUploader({
 
             <ImageEditorCanvas
                 imageSrc={imageSrc}
+                isGif={isGif}
                 manualTool={manualTool}
                 manualConfig={manualConfig}
                 onManualApplyBatch={onManualApplyBatch}

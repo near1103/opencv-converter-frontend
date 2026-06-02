@@ -124,6 +124,7 @@ function drawAction(ctx, action) {
 
 export default function ImageEditorCanvas({
                                               imageSrc,
+                                              isGif = false,
                                               manualTool = null,
                                               manualConfig = null,
                                               onManualApplyBatch,
@@ -144,10 +145,12 @@ export default function ImageEditorCanvas({
     const [selectionStart, setSelectionStart] = useState(null);
     const [isSelecting, setIsSelecting] = useState(false);
 
-    const isManualMode = ["BRUSH", "ERASER", "COLOR_FILL", "SELECT"].includes(manualTool);
+    const isManualMode = !isGif && ["BRUSH", "ERASER", "COLOR_FILL", "SELECT"].includes(manualTool);
     const hasDraft = draftActions.length > 0 || !!currentStroke || !!selectionDraft;
 
     const redrawSourceCanvas = useCallback(() => {
+        if (isGif) return;
+
         const sourceCanvas = sourceCanvasRef.current;
         const img = imageElementRef.current;
         if (!sourceCanvas || !img) return;
@@ -158,9 +161,11 @@ export default function ImageEditorCanvas({
 
         ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
         ctx.drawImage(img, 0, 0);
-    }, []);
+    }, [isGif]);
 
     const redrawPreviewCanvas = useCallback(() => {
+        if (isGif) return;
+
         const sourceCanvas = sourceCanvasRef.current;
         const previewCanvas = previewCanvasRef.current;
         if (!sourceCanvas || !previewCanvas) return;
@@ -182,10 +187,10 @@ export default function ImageEditorCanvas({
         if (selectionDraft) {
             drawSelection(ctx, selectionDraft);
         }
-    }, [draftActions, currentStroke, selectionDraft]);
+    }, [isGif, draftActions, currentStroke, selectionDraft]);
 
     useEffect(() => {
-        if (!imageSrc) return;
+        if (!imageSrc || isGif) return;
 
         const img = new Image();
         img.onload = () => {
@@ -201,11 +206,25 @@ export default function ImageEditorCanvas({
             setIsSelecting(false);
         };
         img.src = imageSrc;
-    }, [imageSrc, redrawSourceCanvas]);
+    }, [imageSrc, isGif, redrawSourceCanvas]);
 
     useEffect(() => {
+        if (isGif) return;
         redrawPreviewCanvas();
-    }, [redrawPreviewCanvas]);
+    }, [isGif, redrawPreviewCanvas]);
+
+    useEffect(() => {
+        if (!isGif) return;
+
+        setDraftActions([]);
+        setCurrentStroke(null);
+        setIsDrawing(false);
+        setIsApplying(false);
+
+        setSelectionDraft(null);
+        setSelectionStart(null);
+        setIsSelecting(false);
+    }, [isGif, imageSrc]);
 
     const getCanvasCoords = useCallback((event) => {
         const canvas = previewCanvasRef.current;
@@ -251,6 +270,7 @@ export default function ImageEditorCanvas({
 
     const handlePointerDown = useCallback(
         (event) => {
+            if (isGif) return;
             if (colorPickerActive) return;
             if (!manualTool || !manualConfig || isApplying) return;
 
@@ -298,11 +318,12 @@ export default function ImageEditorCanvas({
                 setIsDrawing(true);
             }
         },
-        [manualTool, manualConfig, getCanvasCoords, isApplying, colorPickerActive]
+        [isGif, manualTool, manualConfig, getCanvasCoords, isApplying, colorPickerActive]
     );
 
     const handlePointerMove = useCallback(
         (event) => {
+            if (isGif) return;
             if (colorPickerActive || isApplying) return;
 
             const coords = getCanvasCoords(event);
@@ -329,6 +350,7 @@ export default function ImageEditorCanvas({
             });
         },
         [
+            isGif,
             colorPickerActive,
             isApplying,
             manualTool,
@@ -342,6 +364,7 @@ export default function ImageEditorCanvas({
     );
 
     const handlePointerUp = useCallback(() => {
+        if (isGif) return;
         if (colorPickerActive) return;
 
         if (manualTool === "SELECT" && isSelecting) {
@@ -362,10 +385,12 @@ export default function ImageEditorCanvas({
 
             return null;
         });
-    }, [manualTool, isSelecting, isDrawing, colorPickerActive]);
+    }, [isGif, manualTool, isSelecting, isDrawing, colorPickerActive]);
 
     const handleClick = useCallback(
         (event) => {
+            if (isGif) return;
+
             const coords = getCanvasCoords(event);
             if (!coords) return;
 
@@ -390,6 +415,7 @@ export default function ImageEditorCanvas({
             setDraftActions((prev) => [...prev, fillAction]);
         },
         [
+            isGif,
             manualTool,
             manualConfig,
             getCanvasCoords,
@@ -401,6 +427,7 @@ export default function ImageEditorCanvas({
     );
 
     const handleUndoLast = useCallback(() => {
+        if (isGif) return;
         if (isApplying || colorPickerActive) return;
 
         if (currentStroke) {
@@ -417,9 +444,10 @@ export default function ImageEditorCanvas({
         }
 
         setDraftActions((prev) => prev.slice(0, -1));
-    }, [currentStroke, selectionDraft, isApplying, colorPickerActive]);
+    }, [isGif, currentStroke, selectionDraft, isApplying, colorPickerActive]);
 
     const handleClearDraft = useCallback(() => {
+        if (isGif) return;
         if (isApplying || colorPickerActive) return;
 
         setDraftActions([]);
@@ -429,9 +457,10 @@ export default function ImageEditorCanvas({
         setSelectionDraft(null);
         setSelectionStart(null);
         setIsSelecting(false);
-    }, [isApplying, colorPickerActive]);
+    }, [isGif, isApplying, colorPickerActive]);
 
     const handleApply = useCallback(async () => {
+        if (isGif) return;
         if (isApplying || colorPickerActive) return;
 
         if (manualTool === "SELECT") {
@@ -491,6 +520,7 @@ export default function ImageEditorCanvas({
             setIsApplying(false);
         }
     }, [
+        isGif,
         manualTool,
         selectionDraft,
         onImageCropApply,
@@ -502,6 +532,45 @@ export default function ImageEditorCanvas({
     ]);
 
     if (!imageSrc) return null;
+
+    if (isGif) {
+        return (
+            <div className="flex flex-col items-center gap-3">
+                <div
+                    className="relative border-2 rounded shadow-sm border-blue-400"
+                    style={{
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        backgroundImage: `
+                            linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+                            linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+                            linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+                            linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)
+                        `,
+                        backgroundSize: "20px 20px",
+                        backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
+                    }}
+                >
+                    <img
+                        src={imageSrc}
+                        alt="GIF preview"
+                        className="block cursor-default"
+                        style={{
+                            display: "block",
+                            maxHeight: "420px",
+                            maxWidth: "100%",
+                            width: "auto",
+                            height: "auto",
+                        }}
+                    />
+                </div>
+
+                <div className="text-sm text-gray-600">
+                    GIF preview is shown as animation. Manual editing/crop is disabled for GIF files.
+                </div>
+            </div>
+        );
+    }
 
     const selectMode = manualConfig?.mode ?? "RECTANGLE";
     const selectionReady =
@@ -520,11 +589,11 @@ export default function ImageEditorCanvas({
                     maxWidth: "100%",
                     overflow: "hidden",
                     backgroundImage: `
-            linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
-            linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
-            linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
-            linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)
-          `,
+                        linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+                        linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+                        linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+                        linear-gradient(-45deg, transparent 75%, #e5e7eb 75%)
+                    `,
                     backgroundSize: "20px 20px",
                     backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
                 }}

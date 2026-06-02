@@ -41,6 +41,7 @@ import HistoryViewPanel from "../history-panels/HistoryViewPanel";
 import UndoPanel from "../history-panels/UndoPanel";
 import RedoPanel from "../history-panels/RedoPanel";
 import useEditorHistory from "../../hooks/useEditorHistory";
+import ObamifyPanel from "../filter-panels/ObamifyPanel";
 
 const FILTERS = [
     "RGB_SHIFT",
@@ -58,6 +59,7 @@ const FILTERS = [
     "CHROMATIC_ABERRATION",
     "DATA_MOSH",
     "ASCII_ART",
+    "OBAMIFY",
 ];
 
 const FilterPanels = {
@@ -76,6 +78,7 @@ const FilterPanels = {
     CHROMATIC_ABERRATION: ChromaticAberrationPanel,
     DATA_MOSH: DataMoshPanel,
     ASCII_ART: ASCIIGradientPanel,
+    OBAMIFY: ObamifyPanel,
 };
 
 const defaultParamsByFilter = {
@@ -97,6 +100,7 @@ const defaultParamsByFilter = {
     },
     data_mosh: { blockSize: 16, maxOffset: 30, chaos: 0.5, smear: 0.7 },
     ascii_art: { blockSize: 6, gradient: ".:-=+*#%@", invert: false },
+    obamify: {  preset: "obama", resolution: 96, proximityImportance: 4}
 };
 
 const defaultManualParams = {
@@ -265,6 +269,18 @@ export default function HomePage() {
         clearHistory();
     };
 
+    const getFileExtensionFromMime = (mimeType) => {
+        if (!mimeType) return "png";
+
+        if (mimeType.includes("gif")) return "gif";
+        if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg";
+        if (mimeType.includes("webp")) return "webp";
+        if (mimeType.includes("bmp")) return "bmp";
+        if (mimeType.includes("tiff")) return "tiff";
+
+        return "png";
+    };
+
     async function applyFilter(filterName, params) {
         if (!imageFile && !processedBlob) {
             setToast({ message: "Load image file first", type: "error" });
@@ -272,7 +288,11 @@ export default function HomePage() {
         }
 
         const fileToSend = processedBlob
-            ? new File([processedBlob], "filtered.png", { type: processedBlob.type })
+            ? new File(
+                [processedBlob],
+                `filtered.${getFileExtensionFromMime(processedBlob.type)}`,
+                { type: processedBlob.type || "image/png" }
+            )
             : imageFile;
 
         try {
