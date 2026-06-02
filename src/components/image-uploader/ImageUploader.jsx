@@ -18,7 +18,6 @@ export default function ImageUploader({
                                           onRemove,
                                           processedBlob,
                                           onResetBlob,
-                                          userId,
                                           manualTool,
                                           manualConfig,
                                           onManualApplyBatch,
@@ -35,13 +34,14 @@ export default function ImageUploader({
     const [formatOptions, setFormatOptions] = useState([]);
     const [loadingFormats, setLoadingFormats] = useState(true);
     const [file, setFile] = useState(null);
+    const [isGif, setIsGif] = useState(false);
     const [isConverting, setIsConverting] = useState(false);
     const [toast, setToast] = useState({ message: "", type: "", visible: false });
 
     const { withLoading } = useGlobalLoading();
 
     const supportedFormats = useMemo(
-        () => ["png", "jpeg", "jpg", "webp", "gif", "bmp"],
+        () => ["png", "jpeg", "jpg", "webp", "gif", "bmp", "ico", "tif", "tiff", "tga", "pnm"],
         []
     );
 
@@ -63,7 +63,14 @@ export default function ImageUploader({
     useEffect(() => {
         if (processedBlob && processedBlob instanceof Blob) {
             const reader = new FileReader();
-            reader.onload = () => setImageSrc(reader.result);
+
+            reader.onload = () => {
+                setImageSrc(reader.result);
+
+                const processedIsGif = processedBlob.type === "image/gif";
+                setIsGif(processedIsGif);
+            };
+
             reader.readAsDataURL(processedBlob);
         }
     }, [processedBlob]);
@@ -82,45 +89,66 @@ export default function ImageUploader({
         loadFormats();
     }, []);
 
-    const onDrop = useCallback(async (acceptedFiles) => {
-        if (acceptedFiles.length === 0) return;
+    const onDrop = useCallback((acceptedFiles, fileRejections = []) => {
+        if (fileRejections.length > 0) {
+            showToast(
+                `Unsupported file format. Please upload one of: ${supportedFormats.join(", ").toUpperCase()}.`,
+                "error"
+            );
+            return;
+        }
+
+        if (!acceptedFiles || acceptedFiles.length === 0) {
+            showToast(
+                `Unsupported file format. Please upload one of: ${supportedFormats.join(", ").toUpperCase()}.`,
+                "error"
+            );
+            return;
+        }
 
         const uploadedFile = acceptedFiles[0];
-        setFile(uploadedFile);
 
-        const extMatch = uploadedFile.name.match(/\.(\w+)$/);
+        const extMatch = uploadedFile.name.match(/\.([^.]+)$/);
         const extension = extMatch ? extMatch[1].toLowerCase() : "";
+
+        if (!supportedFormats.includes(extension)) {
+            showToast(
+                `Unsupported file format. Please upload one of: ${supportedFormats.join(", ").toUpperCase()}.`,
+                "error"
+            );
+            setFile(null);
+            setIsGif(false);
+            return;
+        }
+
+        const isUploadedGif =
+            uploadedFile.type === "image/gif" ||
+            uploadedFile.name.toLowerCase().endsWith(".gif");
 
         const reader = new FileReader();
 
-        const handleImage = (result) => {
-            setImageSrc(result);
-            setOriginalImageSrc(result);
-            onImageLoad?.(result);
+        reader.onload = () => {
+            setImageSrc(reader.result);
+            setOriginalImageSrc(reader.result);
+            setFile(uploadedFile);
+            setIsGif(isUploadedGif);
+
+            onImageLoad?.(reader.result);
             onFileLoad?.(uploadedFile);
         };
 
-        if (!supportedFormats.includes(extension)) {
-            try {
-                await withLoading(async () => {
-                    const blob = await convertToFormat(uploadedFile, "png");
-                    reader.onload = () => handleImage(reader.result);
-                    reader.readAsDataURL(blob);
-                }, "Preparing image...");
-            } catch (err) {
-                console.error("Preview conversion error:", err);
-                alert("Preview failed. Try another file.");
-            }
-        } else {
-            reader.onload = () => handleImage(reader.result);
-            reader.readAsDataURL(uploadedFile);
-        }
-    }, [onImageLoad, onFileLoad, supportedFormats, withLoading]);
+        reader.onerror = () => {
+            showToast("Failed to load image. Please try another file.", "error");
+        };
+
+        reader.readAsDataURL(uploadedFile);
+    }, [onImageLoad, onFileLoad, supportedFormats]);
 
     const handleRemove = () => {
         setImageSrc(null);
         setOriginalImageSrc(null);
         setFile(null);
+        setIsGif(false);
         setSelectedFormat(formatOptions[0]?.value || "");
         onImageLoad?.(null);
         onRemove?.();
@@ -129,6 +157,13 @@ export default function ImageUploader({
     const handleReset = () => {
         if (originalImageSrc) {
             setImageSrc(originalImageSrc);
+
+            const originalIsGif =
+                file?.type === "image/gif" ||
+                file?.name?.toLowerCase().endsWith(".gif");
+
+            setIsGif(!!originalIsGif);
+
             onImageLoad?.(originalImageSrc);
             onResetBlob?.();
         }
@@ -139,7 +174,7 @@ export default function ImageUploader({
 
         const blobToSend = processedBlob || file;
         if (!blobToSend) {
-            alert("No image to save.");
+            showToast("No image to save.", "error");
             return;
         }
 
@@ -165,7 +200,7 @@ export default function ImageUploader({
             }, "Converting image...");
         } catch (err) {
             console.error("Save error:", err);
-            alert("Failed to save image.");
+            showToast("Failed to save image.", "error");
         } finally {
             setIsConverting(false);
         }
@@ -206,7 +241,7 @@ export default function ImageUploader({
     };
 
     return (
-        <div className="flex flex-col items-center w-full px-4 max-w-5xl mx-auto">
+        <div className="relative flex flex-col items-center w-full px-4 max-w-5xl mx-auto">
             {toast.visible && (
                 <Toast message={toast.message} type={toast.type} onClose={hideToast} />
             )}
@@ -215,6 +250,7 @@ export default function ImageUploader({
 
             <ImageEditorCanvas
                 imageSrc={imageSrc}
+                isGif={isGif}
                 manualTool={manualTool}
                 manualConfig={manualConfig}
                 onManualApplyBatch={onManualApplyBatch}

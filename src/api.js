@@ -183,6 +183,59 @@ export async function deleteUserImage(id) {
    PROJECTS API
    ========================= */
 
+export async function fetchObamifyPresets() {
+    try {
+        const res = await authFetch(`${API}/obamify/presets`);
+        const data = await res.json();
+
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error("fetchObamifyPresets error:", error);
+
+        return [
+            {
+                value: "obama",
+                label: "Obama",
+                description: "Default Obama-style target preset",
+            },
+        ];
+    }
+}
+
+export async function createObamifyTempPreset({
+                                                  file,
+                                                  mode = "object_text",
+                                                  priority = "all",
+                                                  priorityRegions = "",
+                                                  priorityPolygons = "",
+                                                  priorityMask = null,
+                                              }) {
+    const formData = new FormData();
+
+    formData.append("file", file);
+    formData.append("mode", mode);
+    formData.append("priority", priority);
+
+    if (priorityRegions) {
+        formData.append("priorityRegions", priorityRegions);
+    }
+
+    if (priorityPolygons) {
+        formData.append("priorityPolygons", priorityPolygons);
+    }
+
+    if (priorityMask) {
+        formData.append("priorityMask", priorityMask);
+    }
+
+    const res = await authFetch(`${API}/obamify/temp-preset`, {
+        method: "POST",
+        body: formData,
+    });
+
+    return res.json();
+}
+
 export async function saveProjectToServer({
                                               originalFile,
                                               resultFile,
